@@ -38,10 +38,7 @@ class CINEncoder(batchSize: Int,
       .toTensor[Float]
   }
 
-  def backward(input: Tensor[Float], gradOutput: Tensor[Float]): Tensor[Float] = {
-    val x0Tensor = shapeModule.forward(input)
-    var gradTable = outputModule.backward(cinOutputTable, gradOutput).toTable
-
+  def backward(input: Tensor[Float], gradOutputTable: Table): Tensor[Float] = {
     null
   }
 
