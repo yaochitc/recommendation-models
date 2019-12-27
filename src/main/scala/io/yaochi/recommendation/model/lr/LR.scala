@@ -3,11 +3,14 @@ package io.yaochi.recommendation.model.lr
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
+import io.yaochi.recommendation.model.encoder.FirstOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
 import io.yaochi.recommendation.util.BackwardUtil
 
 class LR(inputDim: Int)
   extends RecModel(RecModelType.BIAS_WEIGHT) {
+
+  private val innerModel = new InternalLRModel()
 
   override def getMatsSize: Array[Int] = Array()
 
@@ -21,7 +24,7 @@ class LR(inputDim: Int)
     val weights = params("weights").asInstanceOf[Array[Float]]
     val bias = params("bias").asInstanceOf[Array[Float]]
 
-    InternalLRModel.forward(batchSize, index, weights, bias)
+    innerModel.forward(batchSize, index, weights, bias)
   }
 
   override protected def backward(params: Map[String, Any]): Float = {
@@ -31,26 +34,23 @@ class LR(inputDim: Int)
     val bias = params("bias").asInstanceOf[Array[Float]]
     val targets = params("targets").asInstanceOf[Array[Float]]
 
-    InternalLRModel.backward(batchSize, index, weights, bias, targets)
+    innerModel.backward(batchSize, index, weights, bias, targets)
   }
 
 }
 
-private[lr] object InternalLRModel {
-  private val model = buildModel()
-
-  private val criterion = new BCECriterion[Float]()
-
+private[lr] class InternalLRModel {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],
-              bias: Array[Float]): Unit = {
-    val encoder = buildEncoder(batchSize)
+              bias: Array[Float]): Array[Float] = {
+    val encoder = FirstOrderEncoder(batchSize)
     val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
       Tensor.apply(index, Array(index.length))))
     val weightTensor = encoder.forward(weightTable)
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
+    val model = InternalLRModel.model
     val inputTable = T.array(Array(weightTensor, biasTensor))
     val outputTensor = model.forward(inputTable)
       .toTensor[Float]
@@ -63,7 +63,7 @@ private[lr] object InternalLRModel {
                weights: Array[Float],
                bias: Array[Float],
                targets: Array[Float]): Float = {
-    val encoder = buildEncoder(batchSize)
+    val encoder = FirstOrderEncoder(batchSize)
     val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
       Tensor.apply(index, Array(index.length))))
     val weightTensor = encoder.forward(weightTable)
@@ -72,21 +72,26 @@ private[lr] object InternalLRModel {
     val inputTable = T.array(Array(weightTensor, biasTensor))
     val targetTensor = Tensor.apply(targets, Array(targets.length, 1))
 
+    val model = InternalLRModel.model
+    val criterion = InternalLRModel.criterion
     val outputTensor = model.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
-    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
+    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor))
+      .toTable
 
     val weightGradTensor = encoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val biasGradTensor = gradTable[Tensor[Float]](2)
 
-    BackwardUtil.firstOrderBackward(weights, bias, weightGradTensor, biasGradTensor)
+    BackwardUtil.weightsBackward(weights, bias, weightGradTensor, biasGradTensor)
 
     loss
   }
+}
 
-  def buildEncoder(batchSize: Int): Scatter[Float] = {
-    new Scatter[Float](batchSize, 1)
-  }
+private[lr] object InternalLRModel {
+  private val model = buildModel()
+
+  private val criterion = new BCECriterion[Float]()
 
   def buildModel(): Sequential[Float] = {
     Sequential[Float]()
