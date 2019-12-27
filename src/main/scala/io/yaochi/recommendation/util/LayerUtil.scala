@@ -12,11 +12,11 @@ object LayerUtil {
     val biasTensor = Tensor[Float](outputSize)
 
     for (i <- 0 until outputSize; j <- 0 until inputSize) {
-      weightTensor.setValue(i + 1, j + 1, mats(i * inputSize + j))
+      weightTensor.setValue(i + 1, j + 1, mats(offset + i * inputSize + j))
     }
 
     for (i <- 0 until outputSize) {
-      biasTensor.setValue(i + 1, mats(inputSize * outputSize + i))
+      biasTensor.setValue(i + 1, mats(offset + inputSize * outputSize + i))
     }
 
     Linear[Float](inputSize, outputSize, initWeight = weightTensor, initBias = biasTensor)

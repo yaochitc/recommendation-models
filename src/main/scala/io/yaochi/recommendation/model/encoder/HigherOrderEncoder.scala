@@ -20,7 +20,7 @@ class HigherOrderEncoder(batchSize: Int,
 
   def backward(input: Tensor[Float], gradOutput: Tensor[Float]): Tensor[Float] = {
     val gradTensor = module.backward(input, gradOutput).toTensor[Float]
-    var offset = 0
+    var curOffset = 0
     for (linearLayer <- linearLayers) {
       val gradWeight = linearLayer.gradWeight
       val gradBias = linearLayer.gradBias
@@ -30,14 +30,14 @@ class HigherOrderEncoder(batchSize: Int,
       val inputSize = gradWeightSize(1)
 
       for (i <- 0 until outputSize; j <- 0 until inputSize) {
-        mats(offset + i * inputSize + j) = gradWeight.valueAt(i + 1, j + 1)
+        mats(curOffset + i * inputSize + j) = gradWeight.valueAt(i + 1, j + 1)
       }
-      offset += outputSize * inputSize
+      curOffset += outputSize * inputSize
 
       for (i <- 0 until outputSize) {
-        mats(offset + i) = gradBias.valueAt(i + 1)
+        mats(curOffset + i) = gradBias.valueAt(i + 1)
       }
-      offset += outputSize
+      curOffset += outputSize
     }
 
     gradTensor
@@ -56,14 +56,14 @@ class HigherOrderEncoder(batchSize: Int,
 
   private def buildLinearLayers(): Array[Linear[Float]] = {
     val layers = ArrayBuffer[Linear[Float]]()
-    var offset = 0
+    var curOffset = 0
     var dim = nFields * embeddingDim
     for (fcDim <- fcDims) {
-      layers += LayerUtil.buildLinear(dim, fcDim, mats, offset)
-      offset += dim * fcDim + fcDim
+      layers += LayerUtil.buildLinear(dim, fcDim, mats, curOffset)
+      curOffset += dim * fcDim + fcDim
       dim = fcDim
     }
-    layers += LayerUtil.buildLinear(dim, 1, mats, offset)
+    layers += LayerUtil.buildLinear(dim, 1, mats, curOffset)
     layers.toArray
   }
 }
