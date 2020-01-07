@@ -39,7 +39,7 @@ class LR(inputDim: Int)
 
 }
 
-private[lr] class InternalLRModel {
+private[lr] class InternalLRModel extends Serializable {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],

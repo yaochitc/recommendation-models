@@ -50,7 +50,7 @@ class DeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
 
 private[deepfm] class InternalDeepFMModel(nFields: Int,
                                           embeddingDim: Int,
-                                          fcDims: Array[Int]) {
+                                          fcDims: Array[Int]) extends Serializable {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],
