@@ -186,10 +186,8 @@ class CINEncoder(batchSize: Int,
   }
 
   private def buildOutputLinearLayer(): Linear[Float] = {
-    val layers = ArrayBuffer[Linear[Float]]()
-    var curOffset = outputLinearOffset
-    var dim = cinDims.sum + fcDims.last
-    LayerUtil.buildLinear(dim, 1, mats, false, curOffset)
+    val dim = cinDims.sum + fcDims.last
+    LayerUtil.buildLinear(dim, 1, mats, false, outputLinearOffset)
   }
 
   private def getDNNParameterSize: Int = {
