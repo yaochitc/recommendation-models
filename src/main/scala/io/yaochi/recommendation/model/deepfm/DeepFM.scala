@@ -117,7 +117,8 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
       .toTensor[Float]
     val biasGradTensor = gradTable[Tensor[Float]](4)
 
-    BackwardUtil.weightsBackward(weights, bias, weightGradTensor, biasGradTensor)
+    BackwardUtil.weightsBackward(weights, weightGradTensor)
+    BackwardUtil.biasBackward(bias, biasGradTensor)
     BackwardUtil.embeddingBackward(embedding, Array(secondOrderGradTensor, higherOrderGradTensor))
 
     loss

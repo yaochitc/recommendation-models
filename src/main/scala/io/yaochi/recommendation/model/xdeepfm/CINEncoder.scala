@@ -3,7 +3,7 @@ package io.yaochi.recommendation.model.xdeepfm
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.{T, Table}
-import io.yaochi.recommendation.util.LayerUtil
+import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -21,35 +21,95 @@ class CINEncoder(batchSize: Int,
 
   private val dnnModule = buildDNNModules()
 
-  private val cinModules = buildCINModules()
+  private val cinLinearOffset = start + getDNNParameterSize
+
+  private val (cinLinearLayers, cinModules) = buildCINModules()
+
+  private val sumModule = buildSumModule()
+
+  private val outputLinearOffset = cinLinearOffset + getCINParameterSize
 
   private val outputLinearLayer = buildOutputLinearLayer()
 
   private val outputModule = buildOutputModule()
 
-  private var outputTable: Table = _
+  private var cinOutputTable: Table = _
+
+  private var cinInputTable: Table = _
 
   def forward(input: Tensor[Float]): Tensor[Float] = {
     val x0Tensor = shapeModule.forward(input)
     var xkTensor = x0Tensor
-    var inputTable = T.array(Array(x0Tensor, xkTensor))
+    var inputTable = T.apply(x0Tensor, xkTensor)
+    val inputTensors = ArrayBuffer[Tensor[Float]]()
     val outputTensors = ArrayBuffer[Tensor[Float]]()
     for (cinModule <- cinModules) {
+      inputTensors += xkTensor.toTensor[Float]
       xkTensor = cinModule.forward(inputTable)
-      inputTable = T.array(Array(x0Tensor, xkTensor))
+      inputTable = T.apply(x0Tensor, xkTensor)
       outputTensors += xkTensor.toTensor[Float]
     }
 
-    outputTensors += dnnModule.forward(input).toTensor[Float]
+    cinOutputTable = T.array(outputTensors.toArray)
+    cinInputTable = T.array(inputTensors.toArray)
 
-    outputTable = T.array(outputTensors.toArray)
+    val dinOutputTensor = sumModule.forward(cinOutputTable)
 
-    outputModule.forward(outputTable)
+    val dnnOutputTensor = dnnModule.forward(input).toTensor[Float]
+
+    outputModule.forward(T.apply(dinOutputTensor, dnnOutputTensor))
       .toTensor[Float]
   }
 
-  def backward(input: Tensor[Float], gradOutputTable: Table): Tensor[Float] = {
-    null
+  def backward(input: Tensor[Float], gradOutput: Tensor[Float]): Tensor[Float] = {
+    val outputModuleInput = T.apply(
+      sumModule.output.toTensor[Float],
+      dnnModule.output.toTensor[Float]
+    )
+
+    val outputModuleGradTable = outputModule.backward(outputModuleInput, gradOutput).toTable
+    val dnnGradTensor = dnnModule.backward(input, outputModuleGradTable[Tensor[Float]](2))
+      .toTensor[Float]
+
+    val sumModuleGradTable = sumModule.backward(cinOutputTable, outputModuleGradTable[Tensor[Float]](1))
+      .toTable
+
+    val x0Tensor = shapeModule.output.toTensor[Float]
+    val x0TensorGrad = Tensor[Float]().resizeAs(x0Tensor)
+
+    for (i <- cinModules.length to 1 by -1) {
+      var lastGradTensor = sumModuleGradTable[Tensor[Float]](i)
+      for (j <- i to 1 by -1) {
+        val cinInputTensor = cinInputTable[Tensor[Float]](j)
+        val cinGradTable = cinModules(j - 1).backward(T.apply(x0Tensor, cinInputTensor), lastGradTensor)
+          .toTable
+        x0TensorGrad.add(cinGradTable[Tensor[Float]](1))
+        lastGradTensor = cinGradTable[Tensor[Float]](2)
+      }
+      x0TensorGrad.add(lastGradTensor)
+    }
+
+    BackwardUtil.linearBackward(outputLinearLayer, mats, outputLinearOffset)
+
+    var curOffset = start
+    for (linearLayer <- dnnLinearLayers) {
+      val inputSize = linearLayer.inputSize
+      val outputSize = linearLayer.outputSize
+      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
+      curOffset += inputSize * outputSize + outputSize
+    }
+
+    for (linearLayer <- cinLinearLayers) {
+      val inputSize = linearLayer.inputSize
+      val outputSize = linearLayer.outputSize
+      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
+      curOffset += inputSize * outputSize + outputSize
+    }
+
+    val cinGradTensor = shapeModule.backward(input, x0TensorGrad)
+      .toTensor[Float]
+
+    cinGradTensor.add(dnnGradTensor)
   }
 
   private def buildShapeModule(): Sequential[Float] = {
@@ -81,19 +141,22 @@ class CINEncoder(batchSize: Int,
     layers.toArray
   }
 
-  private def buildCINModules(): Array[Sequential[Float]] = {
+  private def buildCINModules(): (Array[Linear[Float]], Array[Sequential[Float]]) = {
     val modules = ArrayBuffer[Sequential[Float]]()
     var lastCinDim = nFields
-    var curOffset = start + getDNNParameterSize
+    var curOffset = cinLinearOffset
+    val linearLayers = ArrayBuffer[Linear[Float]]()
     for (cinDim <- cinDims) {
-      modules += buildCINModule(lastCinDim, cinDim, curOffset)
+      val linearLayer = LayerUtil.buildLinear(nFields * lastCinDim, cinDim, mats, true, curOffset)
+      modules += buildCINModule(linearLayer, lastCinDim, cinDim, curOffset)
+      linearLayers += linearLayer
       curOffset += nFields * lastCinDim * cinDim + cinDim
       lastCinDim = cinDim
     }
-    modules.toArray
+    (linearLayers.toArray, modules.toArray)
   }
 
-  private def buildCINModule(lastCinDim: Int, cinDim: Int, curOffset: Int): Sequential[Float] = {
+  private def buildCINModule(linearLayer: Linear[Float], lastCinDim: Int, cinDim: Int, curOffset: Int): Sequential[Float] = {
     val x0 = Sequential[Float]()
       .add(Reshape(Array(batchSize * embeddingDim, nFields, 1), Some(false)))
 
@@ -104,18 +167,26 @@ class CINEncoder(batchSize: Int,
       .add(ParallelTable[Float]().add(x0).add(xk))
       .add(MM(transB = true))
       .add(Reshape(Array(nFields * lastCinDim)))
-      .add(LayerUtil.buildLinear(nFields * lastCinDim, cinDim, mats, true, curOffset))
+      .add(linearLayer)
+      .add(Reshape(Array(batchSize, embeddingDim, cinDim), Some(false)))
+  }
+
+  private def buildSumModule(): Sequential[Float] = {
+    Sequential[Float]()
+      .add(JoinTable(2, 2))
+      .add(Transpose(Array((2, 3))))
+      .add(Sum(dimension = 3))
   }
 
   private def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
-      .add(JoinTable(1, 3))
+      .add(JoinTable(2, 2))
       .add(outputLinearLayer)
   }
 
   private def buildOutputLinearLayer(): Linear[Float] = {
     val layers = ArrayBuffer[Linear[Float]]()
-    var curOffset = start + getDNNParameterSize + getCINParameterSize
+    var curOffset = outputLinearOffset
     var dim = cinDims.sum + fcDims.last
     LayerUtil.buildLinear(dim, 1, mats, true, curOffset)
   }

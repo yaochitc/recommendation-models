@@ -82,7 +82,8 @@ private[lr] class InternalLRModel extends Serializable {
     val weightGradTensor = encoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val biasGradTensor = gradTable[Tensor[Float]](2)
 
-    BackwardUtil.weightsBackward(weights, bias, weightGradTensor, biasGradTensor)
+    BackwardUtil.weightsBackward(weights, weightGradTensor)
+    BackwardUtil.biasBackward(bias, biasGradTensor)
 
     loss
   }

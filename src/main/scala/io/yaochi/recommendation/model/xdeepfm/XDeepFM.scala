@@ -5,6 +5,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.model.encoder.FirstOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
+import io.yaochi.recommendation.util.BackwardUtil
 
 class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int], cinDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
@@ -23,7 +24,7 @@ class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int]
       .reduce(_ ++ _)
 
     val concatedInputDim = cinDims.sum + fcDims.last
-    fcParamSize ++ cinParamSize ++ Array(concatedInputDim, 1) ++ Array(1, 1)
+    fcParamSize ++ cinParamSize ++ Array(concatedInputDim, 1, 1, 1)
   }
 
   override def getInputDim: Int = inputDim
@@ -107,7 +108,13 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
     val loss = criterion.forward(outputTensor, targetTensor)
     val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
-    0f
+    val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
+    val embeddingGradTensor = cinEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
+
+    BackwardUtil.weightsBackward(weights, weightGradTensor)
+    BackwardUtil.embeddingBackward(embedding, Array(embeddingGradTensor))
+
+    loss
   }
 }
 
