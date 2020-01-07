@@ -2,7 +2,7 @@ package io.yaochi.recommendation.model.encoder
 
 import com.intel.analytics.bigdl.nn.{Linear, ReLU, Reshape, Sequential}
 import com.intel.analytics.bigdl.tensor.Tensor
-import io.yaochi.recommendation.util.LayerUtil
+import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -23,22 +23,11 @@ class HigherOrderEncoder(batchSize: Int,
     val gradTensor = module.backward(input, gradOutput).toTensor[Float]
     var curOffset = start
     for (linearLayer <- linearLayers) {
-      val gradWeight = linearLayer.gradWeight
-      val gradBias = linearLayer.gradBias
+      val inputSize = linearLayer.inputSize
+      val outputSize = linearLayer.outputSize
 
-      val gradWeightSize = gradWeight.size()
-      val outputSize = gradWeightSize(0)
-      val inputSize = gradWeightSize(1)
-
-      for (i <- 0 until outputSize; j <- 0 until inputSize) {
-        mats(curOffset + i * inputSize + j) = gradWeight.valueAt(i + 1, j + 1)
-      }
-      curOffset += outputSize * inputSize
-
-      for (i <- 0 until outputSize) {
-        mats(curOffset + i) = gradBias.valueAt(i + 1)
-      }
-      curOffset += outputSize
+      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
+      curOffset += inputSize * outputSize + outputSize
     }
 
     gradTensor
