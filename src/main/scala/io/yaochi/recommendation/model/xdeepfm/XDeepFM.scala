@@ -24,7 +24,7 @@ class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int]
       .reduce(_ ++ _)
 
     val concatedInputDim = cinDims.sum + fcDims.last
-    fcParamSize ++ cinParamSize ++ Array(concatedInputDim, 1, 1, 1)
+    fcParamSize ++ cinParamSize ++ Array(concatedInputDim, 1)
   }
 
   override def getInputDim: Int = inputDim

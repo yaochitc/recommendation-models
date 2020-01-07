@@ -168,6 +168,7 @@ class CINEncoder(batchSize: Int,
       .add(MM(transB = true))
       .add(Reshape(Array(nFields * lastCinDim)))
       .add(linearLayer)
+      .add(ReLU())
       .add(Reshape(Array(batchSize, embeddingDim, cinDim), Some(false)))
   }
 
@@ -188,7 +189,7 @@ class CINEncoder(batchSize: Int,
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = outputLinearOffset
     var dim = cinDims.sum + fcDims.last
-    LayerUtil.buildLinear(dim, 1, mats, true, curOffset)
+    LayerUtil.buildLinear(dim, 1, mats, false, curOffset)
   }
 
   private def getDNNParameterSize: Int = {
