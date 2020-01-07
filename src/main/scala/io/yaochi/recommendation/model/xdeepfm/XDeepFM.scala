@@ -75,7 +75,9 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
     val cinEncoder = CINEncoder(batchSize, nFields, embeddingDim, fcDims, cinDims, mats)
     val cinOutputTensor = cinEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor))
+    val biasTensor = Tensor.apply(bias, Array(bias.length))
+
+    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor, biasTensor))
 
     val outputTensor = InternalXDeepFMModel.model.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
@@ -99,7 +101,9 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
     val cinEncoder = CINEncoder(batchSize, nFields, embeddingDim, fcDims, cinDims, mats)
     val cinOutputTensor = cinEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor))
+    val biasTensor = Tensor.apply(bias, Array(bias.length))
+
+    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor, biasTensor))
     val targetTensor = Tensor.apply(targets, Array(targets.length, 1))
 
     val model = InternalXDeepFMModel.model
@@ -110,8 +114,10 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
 
     val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val embeddingGradTensor = cinEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
+    val biasGradTensor = gradTable[Tensor[Float]](3)
 
     BackwardUtil.weightsBackward(weights, weightGradTensor)
+    BackwardUtil.biasBackward(bias, biasGradTensor)
     BackwardUtil.embeddingBackward(embedding, Array(embeddingGradTensor))
 
     loss
