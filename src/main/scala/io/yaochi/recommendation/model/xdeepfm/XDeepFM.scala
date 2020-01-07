@@ -1,5 +1,9 @@
 package io.yaochi.recommendation.model.xdeepfm
 
+import com.intel.analytics.bigdl.nn.{BCECriterion, CAddTable, Sequential, Sigmoid}
+import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.bigdl.utils.T
+import io.yaochi.recommendation.model.encoder.FirstOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
 
 class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int], cinDims: Array[Int])
@@ -8,10 +12,18 @@ class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int]
   private val innerModel = new InternalXDeepFMModel(nFields, embeddingDim, fcDims, cinDims)
 
   override def getMatsSize: Array[Int] = {
-    val dims = Array(nFields * embeddingDim) ++ fcDims ++ Array(1)
-    (1 until dims.length)
-      .map(i => Array(dims(i - 1), dims(i), dims(i), 1))
+    val fcDimsArr = Array(nFields * embeddingDim) ++ fcDims
+    val fcParamSize = (1 until fcDimsArr.length)
+      .map(i => Array(fcDimsArr(i - 1), fcDimsArr(i), fcDimsArr(i), 1))
       .reduce(_ ++ _)
+
+    val cinDimArr = Array(nFields) ++ cinDims
+    val cinParamSize = (1 until cinDimArr.length)
+      .map(i => Array(nFields * cinDimArr(i - 1), cinDimArr(i), cinDimArr(i), 1))
+      .reduce(_ ++ _)
+
+    val concatedInputDim = cinDims.sum + fcDims.last
+    fcParamSize ++ cinParamSize ++ Array(concatedInputDim, 1) ++ Array(1, 1)
   }
 
   override def getInputDim: Int = inputDim
@@ -45,14 +57,28 @@ class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int]
 private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
                                             embeddingDim: Int,
                                             fcDims: Array[Int],
-                                            cinDim: Array[Int]) extends Serializable {
+                                            cinDims: Array[Int]) extends Serializable {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],
               bias: Array[Float],
               embedding: Array[Float],
               mats: Array[Float]): Array[Float] = {
-    null
+    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length))))
+
+    val firstOrderEncoder = FirstOrderEncoder(batchSize)
+    val firstOrderTensor = firstOrderEncoder.forward(weightTable)
+
+    val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
+    val cinEncoder = CINEncoder(batchSize, nFields, embeddingDim, fcDims, cinDims, mats)
+    val cinOutputTensor = cinEncoder.forward(embeddingTensor)
+
+    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor))
+
+    val outputTensor = InternalXDeepFMModel.model.forward(inputTable).toTensor[Float]
+    (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
+      .toArray
   }
 
   def backward(batchSize: Int,
@@ -62,6 +88,37 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
                embedding: Array[Float],
                mats: Array[Float],
                targets: Array[Float]): Float = {
+    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length))))
+
+    val firstOrderEncoder = FirstOrderEncoder(batchSize)
+    val firstOrderTensor = firstOrderEncoder.forward(weightTable)
+
+    val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
+    val cinEncoder = CINEncoder(batchSize, nFields, embeddingDim, fcDims, cinDims, mats)
+    val cinOutputTensor = cinEncoder.forward(embeddingTensor)
+
+    val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor))
+    val targetTensor = Tensor.apply(targets, Array(targets.length, 1))
+
+    val model = InternalXDeepFMModel.model
+    val criterion = InternalXDeepFMModel.criterion
+    val outputTensor = model.forward(inputTable)
+    val loss = criterion.forward(outputTensor, targetTensor)
+    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
+
     0f
+  }
+}
+
+private[xdeepfm] object InternalXDeepFMModel {
+  private val model = buildModel()
+
+  private val criterion = new BCECriterion[Float]()
+
+  def buildModel(): Sequential[Float] = {
+    Sequential[Float]()
+      .add(CAddTable())
+      .add(Sigmoid[Float]())
   }
 }

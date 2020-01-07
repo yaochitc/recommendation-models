@@ -60,11 +60,11 @@ class HigherOrderEncoder(batchSize: Int,
     var curOffset = start
     var dim = nFields * embeddingDim
     for (fcDim <- fcDims) {
-      layers += LayerUtil.buildLinear(dim, fcDim, mats, curOffset)
+      layers += LayerUtil.buildLinear(dim, fcDim, mats, true, curOffset)
       curOffset += dim * fcDim + fcDim
       dim = fcDim
     }
-    layers += LayerUtil.buildLinear(dim, 1, mats, curOffset)
+    layers += LayerUtil.buildLinear(dim, 1, mats, true, curOffset)
     layers.toArray
   }
 }
