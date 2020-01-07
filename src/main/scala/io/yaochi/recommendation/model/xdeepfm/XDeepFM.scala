@@ -43,9 +43,9 @@ class XDeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int]
 }
 
 private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
-                                           embeddingDim: Int,
-                                           fcDims: Array[Int],
-                                           cinDim: Array[Int]) {
+                                            embeddingDim: Int,
+                                            fcDims: Array[Int],
+                                            cinDim: Array[Int]) extends Serializable {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],
