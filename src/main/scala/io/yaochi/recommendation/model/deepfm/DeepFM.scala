@@ -74,7 +74,8 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
 
     val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
 
-    val outputTensor = InternalDeepFMModel.model.forward(inputTable).toTensor[Float]
+    val outputModule = InternalDeepFMModel.buildOutputModule()
+    val outputTensor = outputModule.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
   }
@@ -104,11 +105,11 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val model = InternalDeepFMModel.model
-    val criterion = InternalDeepFMModel.criterion
-    val outputTensor = model.forward(inputTable)
+    val outputModule = InternalDeepFMModel.buildOutputModule()
+    val criterion = InternalDeepFMModel.buildCriterion()
+    val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
-    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
+    val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
     val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val secondOrderGradTensor = secondOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
@@ -126,11 +127,9 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
 }
 
 private[deepfm] object InternalDeepFMModel {
-  private val model = buildModel()
+  def buildCriterion() = new BCECriterion[Float]()
 
-  private val criterion = new BCECriterion[Float]()
-
-  def buildModel(): Sequential[Float] = {
+  def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(CAddTable())
       .add(Sigmoid[Float]())

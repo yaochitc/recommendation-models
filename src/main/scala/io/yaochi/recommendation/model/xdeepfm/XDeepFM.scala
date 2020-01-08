@@ -79,7 +79,8 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
 
     val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor, biasTensor))
 
-    val outputTensor = InternalXDeepFMModel.model.forward(inputTable).toTensor[Float]
+    val outputModule = InternalXDeepFMModel.buildOutputModule()
+    val outputTensor = outputModule.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
   }
@@ -106,11 +107,11 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
     val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val model = InternalXDeepFMModel.model
-    val criterion = InternalXDeepFMModel.criterion
-    val outputTensor = model.forward(inputTable)
+    val outputModule = InternalXDeepFMModel.buildOutputModule()
+    val criterion = InternalXDeepFMModel.buildCriterion()
+    val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
-    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
+    val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
     val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val embeddingGradTensor = cinEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
@@ -125,11 +126,9 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
 }
 
 private[xdeepfm] object InternalXDeepFMModel {
-  private val model = buildModel()
+  def buildCriterion() = new BCECriterion[Float]()
 
-  private val criterion = new BCECriterion[Float]()
-
-  def buildModel(): Sequential[Float] = {
+  def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(CAddTable())
       .add(Sigmoid[Float]())

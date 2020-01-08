@@ -69,7 +69,8 @@ private[dnn] class InternalDNNModel(nFields: Int,
 
     val inputTable = T.array(Array(higherOrderTensor, biasTensor))
 
-    val outputTensor = InternalDNNModel.model.forward(inputTable).toTensor[Float]
+    val outputModule = InternalDNNModel.buildOutputModule()
+    val outputTensor = outputModule.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
   }
@@ -94,11 +95,11 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val inputTable = T.array(Array(higherOrderTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val model = InternalDNNModel.model
-    val criterion = InternalDNNModel.criterion
-    val outputTensor = model.forward(inputTable)
+    val outputModule = InternalDNNModel.buildOutputModule()
+    val criterion = InternalDNNModel.buildCriterion()
+    val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
-    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
+    val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
     val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](1))
       .toTensor[Float]
@@ -112,11 +113,9 @@ private[dnn] class InternalDNNModel(nFields: Int,
 }
 
 private[dnn] object InternalDNNModel {
-  private val model = buildModel()
+  def buildCriterion() = new BCECriterion[Float]()
 
-  private val criterion = new BCECriterion[Float]()
-
-  def buildModel(): Sequential[Float] = {
+  def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(CAddTable())
       .add(Sigmoid[Float]())

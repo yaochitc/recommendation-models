@@ -50,9 +50,9 @@ private[lr] class InternalLRModel extends Serializable {
     val weightTensor = encoder.forward(weightTable)
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val model = InternalLRModel.model
+    val outputModule = InternalLRModel.buildOutputModule()
     val inputTable = T.array(Array(weightTensor, biasTensor))
-    val outputTensor = model.forward(inputTable)
+    val outputTensor = outputModule.forward(inputTable)
       .toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
@@ -72,11 +72,11 @@ private[lr] class InternalLRModel extends Serializable {
     val inputTable = T.array(Array(weightTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val model = InternalLRModel.model
-    val criterion = InternalLRModel.criterion
-    val outputTensor = model.forward(inputTable)
+    val outputModule = InternalLRModel.buildOutputModule()
+    val criterion = InternalLRModel.buildCriterion()
+    val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
-    val gradTable = model.backward(inputTable, criterion.backward(outputTensor, targetTensor))
+    val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor))
       .toTable
 
     val weightGradTensor = encoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
@@ -90,11 +90,9 @@ private[lr] class InternalLRModel extends Serializable {
 }
 
 private[lr] object InternalLRModel {
-  private val model = buildModel()
+  def buildCriterion() = new BCECriterion[Float]()
 
-  private val criterion = new BCECriterion[Float]()
-
-  def buildModel(): Sequential[Float] = {
+  def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(CAddTable())
       .add(Sigmoid[Float]())
