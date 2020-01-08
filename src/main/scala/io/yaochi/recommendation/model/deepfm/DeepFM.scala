@@ -102,7 +102,7 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
     val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
-    val targetTensor = Tensor.apply(targets, Array(targets.length, 1))
+    val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val model = InternalDeepFMModel.model
     val criterion = InternalDeepFMModel.criterion

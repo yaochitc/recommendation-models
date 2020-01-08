@@ -178,7 +178,6 @@ class CINEncoder(batchSize: Int,
     Sequential[Float]()
       .add(JoinTable(2, 2))
       .add(outputLinearLayer)
-      .add(ReLU())
   }
 
   private def buildOutputLinearLayer(): Linear[Float] = {

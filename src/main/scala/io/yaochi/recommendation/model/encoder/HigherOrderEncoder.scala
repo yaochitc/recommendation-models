@@ -12,7 +12,7 @@ class HigherOrderEncoder(batchSize: Int,
                          fcDims: Array[Int],
                          mats: Array[Float],
                          start: Int = 0) {
-  private val linearLayers = buildLinearLayers()
+  private val (linearLayers, outputLinearLayer) = buildLinearLayers()
   private val module = buildModule()
 
   def forward(input: Tensor[Float]): Tensor[Float] = {
@@ -30,6 +30,8 @@ class HigherOrderEncoder(batchSize: Int,
       curOffset += inputSize * outputSize + outputSize
     }
 
+    BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)
+
     gradTensor
   }
 
@@ -41,10 +43,11 @@ class HigherOrderEncoder(batchSize: Int,
       encoder.add(linearLayer)
       encoder.add(ReLU())
     }
+    encoder.add(outputLinearLayer)
     encoder
   }
 
-  private def buildLinearLayers(): Array[Linear[Float]] = {
+  private def buildLinearLayers(): (Array[Linear[Float]], Linear[Float]) = {
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = start
     var dim = nFields * embeddingDim
@@ -53,8 +56,7 @@ class HigherOrderEncoder(batchSize: Int,
       curOffset += dim * fcDim + fcDim
       dim = fcDim
     }
-    layers += LayerUtil.buildLinear(dim, 1, mats, true, curOffset)
-    layers.toArray
+    (layers.toArray, LayerUtil.buildLinear(dim, 1, mats, true, curOffset))
   }
 }
 

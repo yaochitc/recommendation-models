@@ -104,7 +104,7 @@ private[xdeepfm] class InternalXDeepFMModel(nFields: Int,
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
     val inputTable = T.array(Array(firstOrderTensor, cinOutputTensor, biasTensor))
-    val targetTensor = Tensor.apply(targets, Array(targets.length, 1))
+    val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val model = InternalXDeepFMModel.model
     val criterion = InternalXDeepFMModel.criterion
