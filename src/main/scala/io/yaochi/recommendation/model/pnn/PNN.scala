@@ -13,10 +13,15 @@ class PNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
   private val innerModel = new InternalPNNModel(nFields, embeddingDim, fcDims)
 
   override def getMatsSize: Array[Int] = {
-    val dims = Array(nFields * embeddingDim) ++ fcDims ++ Array(1)
-    (1 until dims.length)
-      .map(i => Array(dims(i - 1), dims(i), dims(i), 1))
+    val numPairs = nFields * (nFields - 1) / 2
+    val pnnParamSize = Array(nFields * embeddingDim, fcDims.head,
+      numPairs, fcDims.head)
+
+    val fcDimsArr = fcDims ++ Array(1)
+    val fcParamSize = (1 until fcDimsArr.length)
+      .map(i => Array(fcDimsArr(i - 1), fcDimsArr(i), fcDimsArr(i), 1))
       .reduce(_ ++ _)
+    pnnParamSize ++ fcParamSize
   }
 
   override def getInputDim: Int = inputDim
