@@ -1,16 +1,16 @@
-package io.yaochi.recommendation.model.dnn
+package io.yaochi.recommendation.model.pnn
 
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import io.yaochi.recommendation.model.encoder.HigherOrderEncoder
+import io.yaochi.recommendation.model.encoder.{FirstOrderEncoder, HigherOrderEncoder}
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
 import io.yaochi.recommendation.util.BackwardUtil
 
-class DNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
+class PNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
 
-  private val innerModel = new InternalDNNModel(nFields, embeddingDim, fcDims)
+  private val innerModel = new InternalPNNModel(nFields, embeddingDim, fcDims)
 
   override def getMatsSize: Array[Int] = {
     val dims = Array(nFields * embeddingDim) ++ fcDims ++ Array(1)
@@ -48,7 +48,7 @@ class DNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
 
 }
 
-private[dnn] class InternalDNNModel(nFields: Int,
+private[pnn] class InternalPNNModel(nFields: Int,
                                     embeddingDim: Int,
                                     fcDims: Array[Int]) extends Serializable {
   def forward(batchSize: Int,
@@ -60,16 +60,22 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
       Tensor.apply(index, Array(index.length))))
 
+    val firstOrderEncoder = FirstOrderEncoder(batchSize)
+    val firstOrderTensor = firstOrderEncoder.forward(weightTable)
+
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
+    val productEncoder = ProductEncoder(batchSize, nFields, embeddingDim, fcDims.head, mats)
+    val productTensor = productEncoder.forward(embeddingTensor)
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
-    val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
+    val offset = productEncoder.getParameterSize
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats, offset)
+    val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(higherOrderTensor, biasTensor))
+    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
 
-    val outputModule = InternalDNNModel.buildOutputModule()
+    val outputModule = InternalPNNModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
@@ -85,33 +91,42 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
       Tensor.apply(index, Array(index.length))))
 
+    val firstOrderEncoder = FirstOrderEncoder(batchSize)
+    val firstOrderTensor = firstOrderEncoder.forward(weightTable)
+
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
+    val productEncoder = ProductEncoder(batchSize, nFields, embeddingDim, fcDims.head, mats)
+    val productTensor = productEncoder.forward(embeddingTensor)
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
-    val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
+    val offset = productEncoder.getParameterSize
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats, offset)
+    val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(higherOrderTensor, biasTensor))
+    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val outputModule = InternalDNNModel.buildOutputModule()
-    val criterion = InternalDNNModel.buildCriterion()
+    val outputModule = InternalPNNModel.buildOutputModule()
+    val criterion = InternalPNNModel.buildCriterion()
     val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
     val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
-    val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](1))
-    val biasGradTensor = gradTable[Tensor[Float]](2)
+    val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
+    val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
+    val productGradTensor = productEncoder.backward(embeddingTensor, higherOrderGradTensor)
+    val biasGradTensor = gradTable[Tensor[Float]](3)
 
+    BackwardUtil.weightsBackward(weights, weightGradTensor)
     BackwardUtil.biasBackward(bias, biasGradTensor)
-    BackwardUtil.embeddingBackward(embedding, Array(higherOrderGradTensor))
+    BackwardUtil.embeddingBackward(embedding, Array(productGradTensor))
 
     loss
   }
 }
 
-private[dnn] object InternalDNNModel {
+private[pnn] object InternalPNNModel {
   def buildCriterion() = new BCECriterion[Float]()
 
   def buildOutputModule(): Sequential[Float] = {
