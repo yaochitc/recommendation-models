@@ -75,10 +75,10 @@ private[pnn] class InternalPNNModel(nFields: Int,
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
     val offset = productEncoder.getParameterSize
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats, offset)
-    val higherOrderTensor = higherOrderEncoder.forward(productTensor)
+    val dnnEncoder = DNNEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset)
+    val dnnTensor = dnnEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T.array(Array(firstOrderTensor, dnnTensor, biasTensor))
 
     val outputModule = InternalPNNModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
@@ -106,10 +106,10 @@ private[pnn] class InternalPNNModel(nFields: Int,
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
     val offset = productEncoder.getParameterSize
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats, offset)
-    val higherOrderTensor = higherOrderEncoder.forward(productTensor)
+    val dnnEncoder = DNNEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset)
+    val dnnTensor = dnnEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T.array(Array(firstOrderTensor, dnnTensor, biasTensor))
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val outputModule = InternalPNNModel.buildOutputModule()
@@ -119,8 +119,8 @@ private[pnn] class InternalPNNModel(nFields: Int,
     val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
     val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
-    val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
-    val productGradTensor = productEncoder.backward(embeddingTensor, higherOrderGradTensor)
+    val dnnGradTensor = dnnEncoder.backward(productTensor, gradTable[Tensor[Float]](2))
+    val productGradTensor = productEncoder.backward(embeddingTensor, dnnGradTensor)
     val biasGradTensor = gradTable[Tensor[Float]](3)
 
     BackwardUtil.weightsBackward(weights, weightGradTensor)
