@@ -5,6 +5,8 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
+import scala.collection.mutable.ArrayBuffer
+
 class ProductEncoder(batchSize: Int,
                      nFields: Int,
                      embeddingDim: Int,
@@ -13,6 +15,8 @@ class ProductEncoder(batchSize: Int,
                      start: Int = 0) {
   private val numPairs = nFields * (nFields - 1) / 2
 
+  private val (rowTensor, colTensor) = calcIndices()
+
   private val productOutLinearLayer = LayerUtil.buildLinear(nFields * embeddingDim, outputDim, mats, false, start)
 
   private val productOutModule = buildProductOutModule()
@@ -20,6 +24,8 @@ class ProductEncoder(batchSize: Int,
   private val productInnerLinearOffset = start + nFields * embeddingDim * outputDim
 
   private val productInnerLinearLayer = LayerUtil.buildLinear(numPairs, outputDim, mats, false, productInnerLinearOffset)
+
+  private val productInnerReshape = Reshape[Float](Array(batchSize, nFields, embeddingDim), Some(false))
 
   private val productInnerModule = buildProductInnerModule()
 
@@ -31,7 +37,9 @@ class ProductEncoder(batchSize: Int,
 
   def forward(input: Tensor[Float]): Tensor[Float] = {
     val productOutTensor = productOutModule.forward(input).toTensor[Float]
-    val productInnerTensor = productInnerModule.forward(input).toTensor[Float]
+    val productInnerReshapeTensor = productInnerReshape.forward(input)
+    val productInnerTensor = productInnerModule.forward(T.apply(productInnerReshapeTensor, rowTensor, colTensor))
+      .toTensor[Float]
 
     productOutputModule.forward(T.apply(productOutTensor, productInnerTensor)).toTensor[Float]
   }
@@ -42,9 +50,18 @@ class ProductEncoder(batchSize: Int,
       productInnerModule.output.toTensor[Float]
     )
 
-    val productOutputTable = productOutputModule.backward(productOutputInput, gradOutput).toTable
-    val gradTensor = productOutModule.backward(input, productOutputTable[Tensor[Float]](1)).toTensor[Float]
-      .add(productInnerModule.backward(input, productOutputTable[Tensor[Float]](2)).toTensor[Float])
+    val productOutputGradTable = productOutputModule.backward(productOutputInput, gradOutput).toTable
+    val gradTensor = productOutModule.backward(input, productOutputGradTable[Tensor[Float]](1)).toTensor[Float]
+
+    val productInnerInput = T.apply(
+      productInnerReshape.output.toTensor[Float],
+      rowTensor,
+      colTensor
+    )
+    val productInnerGradTable = productInnerModule.backward(productInnerInput, productOutputGradTable[Tensor[Float]](2))
+      .toTable
+
+    gradTensor.add(productInnerReshape.backward(input, productInnerGradTable[Tensor[Float]](1)).toTensor[Float])
 
     var curOffset = start
     BackwardUtil.linearBackward(productOutLinearLayer, mats, curOffset)
@@ -66,8 +83,8 @@ class ProductEncoder(batchSize: Int,
 
   def buildProductInnerModule(): Sequential[Float] = {
     Sequential[Float]()
-      .add(Reshape(Array(batchSize, nFields, embeddingDim), Some(false)))
-      .add(InnerProduct())
+      .add(Gather(batchSize, numPairs, embeddingDim))
+      .add(DotProduct())
       .add(productInnerLinearLayer)
   }
 
@@ -76,6 +93,18 @@ class ProductEncoder(batchSize: Int,
       .add(CAddTable())
       .add(productOutputBiasLayer)
       .add(ReLU())
+  }
+
+  def calcIndices(): (Tensor[Int], Tensor[Int]) = {
+    val rows = ArrayBuffer[Int]()
+    val cols = ArrayBuffer[Int]()
+    for (i <- 0 until nFields; j <- i + 1 until nFields) {
+      rows += i
+      cols += j
+    }
+
+    (Tensor.apply(rows.toArray, Array(rows.length)),
+      Tensor.apply(cols.toArray, Array(cols.length)))
   }
 
   def getParameterSize: Int = {
