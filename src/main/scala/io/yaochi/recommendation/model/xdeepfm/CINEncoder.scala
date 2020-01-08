@@ -89,8 +89,6 @@ class CINEncoder(batchSize: Int,
       x0TensorGrad.add(lastGradTensor)
     }
 
-    BackwardUtil.linearBackward(outputLinearLayer, mats, outputLinearOffset)
-
     var curOffset = start
     for (linearLayer <- dnnLinearLayers) {
       val inputSize = linearLayer.inputSize
@@ -106,6 +104,8 @@ class CINEncoder(batchSize: Int,
       curOffset += inputSize * outputSize + outputSize
     }
 
+    BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)
+
     val cinGradTensor = shapeModule.backward(input, x0TensorGrad)
       .toTensor[Float]
 
@@ -116,6 +116,7 @@ class CINEncoder(batchSize: Int,
     Sequential[Float]()
       .add(Reshape(Array(batchSize, nFields, embeddingDim), Some(false)))
       .add(Transpose(Array((2, 3))))
+      .add(Reshape(Array(batchSize * embeddingDim, nFields, 1), Some(false)))
   }
 
   private def buildDNNModule(): Sequential[Float] = {
@@ -157,19 +158,12 @@ class CINEncoder(batchSize: Int,
   }
 
   private def buildCINModule(linearLayer: Linear[Float], lastCinDim: Int, cinDim: Int, curOffset: Int): Sequential[Float] = {
-    val x0 = Sequential[Float]()
-      .add(Reshape(Array(batchSize * embeddingDim, nFields, 1), Some(false)))
-
-    val xk = Sequential[Float]()
-      .add(Reshape(Array(batchSize * embeddingDim, lastCinDim, 1), Some(false)))
-
     Sequential[Float]()
-      .add(ParallelTable[Float]().add(x0).add(xk))
       .add(MM(transB = true))
       .add(Reshape(Array(nFields * lastCinDim)))
       .add(linearLayer)
       .add(ReLU())
-      .add(Reshape(Array(batchSize, embeddingDim, cinDim), Some(false)))
+      .add(Reshape(Array(batchSize, embeddingDim, cinDim, 1), Some(false)))
   }
 
   private def buildSumModule(): Sequential[Float] = {
@@ -177,6 +171,7 @@ class CINEncoder(batchSize: Int,
       .add(JoinTable(2, 2))
       .add(Transpose(Array((2, 3))))
       .add(Sum(dimension = 3))
+      .add(Squeeze(dim = 3))
   }
 
   private def buildOutputModule(): Sequential[Float] = {
