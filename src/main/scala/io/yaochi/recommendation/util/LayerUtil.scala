@@ -1,6 +1,6 @@
 package io.yaochi.recommendation.util
 
-import com.intel.analytics.bigdl.nn.Linear
+import com.intel.analytics.bigdl.nn.{CAdd, Linear}
 import com.intel.analytics.bigdl.tensor.Tensor
 
 object LayerUtil {
@@ -27,5 +27,16 @@ object LayerUtil {
     }
   }
 
+  def buildBiasLayer(outputSize: Int,
+                     mats: Array[Float],
+                     offset: Int): CAdd[Float] = {
+    val biasLayer = CAdd[Float](Array(outputSize))
 
+    val biasTensor = biasLayer.bias
+    for (i <- 0 until outputSize) {
+      biasTensor.setValue(i + 1, mats(offset + i))
+    }
+
+    biasLayer
+  }
 }

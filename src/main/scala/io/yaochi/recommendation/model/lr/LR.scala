@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.model.encoder.FirstOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
-import io.yaochi.recommendation.util.BackwardUtil
+import io.yaochi.recommendation.util.{BackwardUtil, GradUtil}
 
 class LR(inputDim: Int)
   extends RecModel(RecModelType.BIAS_WEIGHT) {
@@ -82,8 +82,8 @@ private[lr] class InternalLRModel extends Serializable {
     val weightGradTensor = encoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
     val biasGradTensor = gradTable[Tensor[Float]](2)
 
-    BackwardUtil.weightsBackward(weights, weightGradTensor)
-    BackwardUtil.biasBackward(bias, biasGradTensor)
+    GradUtil.weightsGrad(weights, weightGradTensor)
+    GradUtil.biasGrad(bias, biasGradTensor)
 
     loss
   }

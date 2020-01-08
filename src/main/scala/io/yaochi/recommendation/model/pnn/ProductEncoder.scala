@@ -1,50 +1,85 @@
 package io.yaochi.recommendation.model.pnn
 
-import com.intel.analytics.bigdl.nn.{Linear, ReLU, Reshape, Sequential}
+import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
-import io.yaochi.recommendation.util.LayerUtil
+import com.intel.analytics.bigdl.utils.T
+import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
 class ProductEncoder(batchSize: Int,
                      nFields: Int,
                      embeddingDim: Int,
-                     outputSize: Int,
+                     outputDim: Int,
                      mats: Array[Float],
                      start: Int = 0) {
   private val numPairs = nFields * (nFields - 1) / 2
 
-  private val productOutLinearLayer = buildProductOutLinearLayer()
+  private val productOutLinearLayer = LayerUtil.buildLinear(nFields * embeddingDim, outputDim, mats, false, start)
 
   private val productOutModule = buildProductOutModule()
 
-  private val productInnerLinearOffset = start + nFields * embeddingDim * outputSize
+  private val productInnerLinearOffset = start + nFields * embeddingDim * outputDim
 
-  private val productInnerLinearLayer = buildProductInnerLinearLayer()
+  private val productInnerLinearLayer = LayerUtil.buildLinear(numPairs, outputDim, mats, false, productInnerLinearOffset)
+
+  private val productInnerModule = buildProductInnerModule()
+
+  private val productOutputBiasOffset = productInnerLinearOffset + numPairs * outputDim
+
+  private val productOutputBiasLayer = LayerUtil.buildBiasLayer(outputDim, mats, productOutputBiasOffset)
+
+  private val productOutputModule = buildOutputModule()
 
   def forward(input: Tensor[Float]): Tensor[Float] = {
-    productOutModule.forward(input).toTensor[Float]
+    val productOutTensor = productOutModule.forward(input).toTensor[Float]
+    val productInnerTensor = productInnerModule.forward(input).toTensor[Float]
+
+    productOutputModule.forward(T.apply(productOutTensor, productInnerTensor)).toTensor[Float]
   }
 
   def backward(input: Tensor[Float], gradOutput: Tensor[Float]): Tensor[Float] = {
-    productOutModule.backward(input, gradOutput).toTensor[Float]
+    val productOutputInput = T.apply(
+      productOutModule.output.toTensor[Float],
+      productInnerModule.output.toTensor[Float]
+    )
+
+    val productOutputTable = productOutputModule.backward(productOutputInput, gradOutput).toTable
+    val gradTensor = productOutModule.backward(input, productOutputTable[Tensor[Float]](1)).toTensor[Float]
+      .add(productInnerModule.backward(input, productOutputTable[Tensor[Float]](2)).toTensor[Float])
+
+    var curOffset = start
+    BackwardUtil.linearBackward(productOutLinearLayer, mats, curOffset)
+
+    curOffset = productInnerLinearOffset
+    BackwardUtil.linearBackward(productInnerLinearLayer, mats, curOffset)
+
+    curOffset = productOutputBiasOffset
+    BackwardUtil.biasBackward(productOutputBiasLayer, mats, curOffset)
+
+    gradTensor
   }
 
   def buildProductOutModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(Reshape(Array(batchSize, nFields * embeddingDim), Some(false)))
       .add(productOutLinearLayer)
+  }
+
+  def buildProductInnerModule(): Sequential[Float] = {
+    Sequential[Float]()
+      .add(Reshape(Array(batchSize, nFields, embeddingDim), Some(false)))
+      .add(InnerProduct())
+      .add(productInnerLinearLayer)
+  }
+
+  def buildOutputModule(): Sequential[Float] = {
+    Sequential[Float]()
+      .add(CAddTable())
+      .add(productOutputBiasLayer)
       .add(ReLU())
   }
 
-  def buildProductOutLinearLayer(): Linear[Float] = {
-    LayerUtil.buildLinear(nFields * embeddingDim, outputSize, mats, false, start)
-  }
-
-  def buildProductInnerLinearLayer(): Linear[Float] = {
-    LayerUtil.buildLinear(numPairs, outputSize, mats, false, productInnerLinearOffset)
-  }
-
   def getParameterSize: Int = {
-    productInnerLinearOffset + numPairs * outputSize
+    productInnerLinearOffset + numPairs * outputDim + 1
   }
 }
 

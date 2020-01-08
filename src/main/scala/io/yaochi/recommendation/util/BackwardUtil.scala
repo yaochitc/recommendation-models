@@ -1,12 +1,11 @@
 package io.yaochi.recommendation.util
 
-import com.intel.analytics.bigdl.nn.Linear
-import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.bigdl.nn.{CAdd, Linear}
 
 object BackwardUtil {
   def linearBackward(linear: Linear[Float],
                      weights: Array[Float],
-                     offset: Int): Int = {
+                     offset: Int = 0): Int = {
     val gradWeight = linear.gradWeight
 
     val gradWeightSize = gradWeight.size()
@@ -29,31 +28,16 @@ object BackwardUtil {
     curOffset
   }
 
-  def weightsBackward(weights: Array[Float],
-                      weightGradTensor: Tensor[Float]
-                     ): Unit = {
-    for (i <- 0 until weightGradTensor.nElement()) {
-      weights(i) = weightGradTensor.valueAt(i + 1)
+  def biasBackward(bias: CAdd[Float],
+                   weights: Array[Float],
+                   offset:Int):Int = {
+    val gradBias = bias.gradBias
+    val outputSize = gradBias.size(1)
+
+    for (i <- 0 until outputSize) {
+      weights(offset + i) = gradBias.valueAt(i + 1)
     }
+    offset + outputSize
   }
 
-  def biasBackward(bias: Array[Float],
-                   biasGradTensor: Tensor[Float]): Unit = {
-    for (i <- bias.indices) {
-      bias(i) = biasGradTensor.valueAt(i + 1)
-    }
-  }
-
-  def embeddingBackward(embedding: Array[Float],
-                        gradTensors: Array[Tensor[Float]]): Unit = {
-    for (i <- embedding.indices) {
-      embedding(i) = 0
-    }
-
-    for (gradTensor <- gradTensors) {
-      for (i <- 0 until gradTensor.nElement()) {
-        embedding(i) = gradTensor.valueAt(i + 1)
-      }
-    }
-  }
 }

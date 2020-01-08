@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.model.encoder.{FirstOrderEncoder, HigherOrderEncoder, SecondOrderEncoder}
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
-import io.yaochi.recommendation.util.BackwardUtil
+import io.yaochi.recommendation.util.{BackwardUtil, GradUtil}
 
 class DeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
@@ -69,7 +69,7 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
     val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
@@ -99,7 +99,7 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
     val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
@@ -116,9 +116,9 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](3))
     val biasGradTensor = gradTable[Tensor[Float]](4)
 
-    BackwardUtil.weightsBackward(weights, weightGradTensor)
-    BackwardUtil.biasBackward(bias, biasGradTensor)
-    BackwardUtil.embeddingBackward(embedding, Array(secondOrderGradTensor, higherOrderGradTensor))
+    GradUtil.weightsGrad(weights, weightGradTensor)
+    GradUtil.biasGrad(bias, biasGradTensor)
+    GradUtil.embeddingGrad(embedding, Array(secondOrderGradTensor, higherOrderGradTensor))
 
     loss
   }

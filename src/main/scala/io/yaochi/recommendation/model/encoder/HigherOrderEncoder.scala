@@ -7,11 +7,11 @@ import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 import scala.collection.mutable.ArrayBuffer
 
 class HigherOrderEncoder(batchSize: Int,
-                         nFields: Int,
-                         embeddingDim: Int,
+                         inputDim: Int,
                          fcDims: Array[Int],
                          mats: Array[Float],
-                         start: Int = 0) {
+                         start: Int = 0,
+                         reshape: Boolean = true) {
   private val (linearLayers, outputLinearLayer) = buildLinearLayers()
   private val module = buildModule()
 
@@ -37,7 +37,9 @@ class HigherOrderEncoder(batchSize: Int,
 
   private def buildModule(): Sequential[Float] = {
     val encoder = Sequential[Float]()
-      .add(Reshape(Array(batchSize, nFields * embeddingDim), Some(false)))
+    if (reshape) {
+      encoder.add(Reshape(Array(batchSize, inputDim), Some(false)))
+    }
 
     for (linearLayer <- linearLayers) {
       encoder.add(linearLayer)
@@ -50,7 +52,7 @@ class HigherOrderEncoder(batchSize: Int,
   private def buildLinearLayers(): (Array[Linear[Float]], Linear[Float]) = {
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = start
-    var dim = nFields * embeddingDim
+    var dim = inputDim
     for (fcDim <- fcDims) {
       layers += LayerUtil.buildLinear(dim, fcDim, mats, true, curOffset)
       curOffset += dim * fcDim + fcDim
@@ -62,10 +64,10 @@ class HigherOrderEncoder(batchSize: Int,
 
 object HigherOrderEncoder {
   def apply(batchSize: Int,
-            nFields: Int,
-            embeddingDim: Int,
+            inputDim: Int,
             fcDims: Array[Int],
             mats: Array[Float],
-            start: Int = 0): HigherOrderEncoder =
-    new HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats, start)
+            start: Int = 0,
+            reshape: Boolean = true): HigherOrderEncoder =
+    new HigherOrderEncoder(batchSize, inputDim, fcDims, mats, start, reshape)
 }

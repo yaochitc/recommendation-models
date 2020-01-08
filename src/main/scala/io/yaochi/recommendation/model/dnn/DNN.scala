@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.model.encoder.HigherOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
-import io.yaochi.recommendation.util.BackwardUtil
+import io.yaochi.recommendation.util.{BackwardUtil, GradUtil}
 
 class DNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
@@ -64,7 +64,7 @@ private[dnn] class InternalDNNModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
     val inputTable = T.array(Array(higherOrderTensor, biasTensor))
@@ -89,7 +89,7 @@ private[dnn] class InternalDNNModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields, embeddingDim, fcDims, mats)
+    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
     val inputTable = T.array(Array(higherOrderTensor, biasTensor))
@@ -104,8 +104,8 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](1))
     val biasGradTensor = gradTable[Tensor[Float]](2)
 
-    BackwardUtil.biasBackward(bias, biasGradTensor)
-    BackwardUtil.embeddingBackward(embedding, Array(higherOrderGradTensor))
+    GradUtil.biasGrad(bias, biasGradTensor)
+    GradUtil.embeddingGrad(embedding, Array(higherOrderGradTensor))
 
     loss
   }
