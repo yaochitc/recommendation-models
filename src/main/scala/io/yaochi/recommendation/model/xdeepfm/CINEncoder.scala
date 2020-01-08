@@ -19,7 +19,7 @@ class CINEncoder(batchSize: Int,
 
   private val dnnLinearLayers = buildLinearLayers()
 
-  private val dnnModule = buildDNNModules()
+  private val dnnModule = buildDNNModule()
 
   private val cinLinearOffset = start + getDNNParameterSize
 
@@ -118,7 +118,7 @@ class CINEncoder(batchSize: Int,
       .add(Transpose(Array((2, 3))))
   }
 
-  private def buildDNNModules(): Sequential[Float] = {
+  private def buildDNNModule(): Sequential[Float] = {
     val encoder = Sequential[Float]()
       .add(Reshape(Array(batchSize, nFields * embeddingDim), Some(false)))
 
@@ -183,6 +183,7 @@ class CINEncoder(batchSize: Int,
     Sequential[Float]()
       .add(JoinTable(2, 2))
       .add(outputLinearLayer)
+      .add(ReLU())
   }
 
   private def buildOutputLinearLayer(): Linear[Float] = {
