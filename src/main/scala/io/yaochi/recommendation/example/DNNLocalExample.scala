@@ -5,10 +5,11 @@ import com.tencent.angel.spark.ml.core.ArgsUtil
 import com.tencent.angel.spark.ml.core.metric.AUC
 import io.yaochi.recommendation.model.ParRecModel
 import io.yaochi.recommendation.model.deepfm.DeepFM
+import io.yaochi.recommendation.model.dnn.DNN
 import io.yaochi.recommendation.optim.AsyncAdam
 import org.apache.spark.{SparkConf, SparkContext}
 
-object DeepFMLocalExample {
+object DNNLocalExample {
 
   def main(args: Array[String]): Unit = {
     val params = ArgsUtil.parse(args)
@@ -30,7 +31,7 @@ object DeepFMLocalExample {
     val data = sc.textFile(input)
 
     val optim = new AsyncAdam(stepSize)
-    val model = new ParRecModel(optim, new DeepFM(inputDim, nFields, embeddingDim, fcDims))
+    val model = new ParRecModel(optim, new DNN(inputDim, nFields, embeddingDim, fcDims))
     model.init()
 
     for (epoch <- 1 to 50) {
