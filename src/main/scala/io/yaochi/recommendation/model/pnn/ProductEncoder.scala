@@ -84,7 +84,7 @@ class ProductEncoder(batchSize: Int,
   def buildProductInnerModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(Gather(batchSize, numPairs, embeddingDim))
-      .add(DotProduct())
+      .add(DotProduct2())
       .add(productInnerLinearLayer)
   }
 
