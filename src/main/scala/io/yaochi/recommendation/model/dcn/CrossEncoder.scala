@@ -3,7 +3,7 @@ package io.yaochi.recommendation.model.dcn
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import io.yaochi.recommendation.util.LayerUtil
+import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -23,11 +23,11 @@ class CrossEncoder(batchSize: Int,
 
   private val crossMMLayers = buildCrossMMLayers()
 
-  private val crossAddLayers = buildAddLayers()
-
   private val crossBiasOffset = start + xDim * crossDepth
 
   private val crossBiasLayers = buildCrossBiasLayers()
+
+  private val crossAddLayers = buildAddLayers()
 
   private val dnnLinearOffset = crossBiasOffset + 1 * crossDepth
 
@@ -66,28 +66,66 @@ class CrossEncoder(batchSize: Int,
       dnnModule.output.toTensor[Float]
     )
 
+    val x0Tensor = shapeModule.output.toTensor[Float]
+    val x0TensorGrad = Tensor[Float]().resizeAs(x0Tensor)
+
     val outputModuleGradTable = outputModule.backward(outputModuleInput, gradOutput).toTable
-    val dnnGradTensor = dnnModule.backward(input, outputModuleGradTable[Tensor[Float]](2))
+    val dnnGradTensor = dnnModule.backward(x0Tensor, outputModuleGradTable[Tensor[Float]](2))
       .toTensor[Float]
 
+    var lastGradTensor = outputModuleGradTable[Tensor[Float]](1)
     for (i <- crossDepth - 1 to 0 by -1) {
-      val crossInputTensor = crossInputTensors(i - 1)
-      val mmOutputTensor = crossMMLayers(i - 1).output.toTensor[Float]
-      crossAddLayers(i - 1).backward(T(mmOutputTensor, crossInputTensor), gradOutput)
+      val xkGradTensor = Tensor[Float]().resizeAs(x0Tensor)
+      val inputTensor = crossInputTensors(i)
+      val mmOutputTensor = crossMMLayers(i).output.toTensor[Float]
+      val addGradTable = crossAddLayers(i).backward(T(mmOutputTensor, inputTensor), lastGradTensor)
+        .toTable
+      xkGradTensor.add(addGradTable[Tensor[Float]](2))
+      val linearOutputTensor = crossLinearLayers(i).output.toTensor[Float]
+      val mmGradTable = crossMMLayers(i).backward(T(x0Tensor, linearOutputTensor), addGradTable[Tensor[Float]](1))
+        .toTable
+      x0TensorGrad.add(mmGradTable[Tensor[Float]](1))
 
+      xkGradTensor.add(crossLinearLayers(i).backward(inputTensor, mmGradTable[Tensor[Float]](2)))
+      lastGradTensor = xkGradTensor
     }
 
-    null
+    var curOffset = start
+    for (linearLayer <- crossLinearLayers) {
+      val inputSize = linearLayer.inputSize
+      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
+      curOffset += inputSize * 1
+    }
+
+    for (biasLayer <- crossBiasLayers) {
+      BackwardUtil.biasBackward(biasLayer, mats, curOffset)
+      curOffset += 1
+    }
+
+    for (linearLayer <- dnnLinearLayers) {
+      val inputSize = linearLayer.inputSize
+      val outputSize = linearLayer.outputSize
+      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
+      curOffset += inputSize * outputSize + outputSize
+    }
+
+    BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)
+
+    x0TensorGrad.add(dnnGradTensor).add(lastGradTensor)
+
+    shapeModule.backward(input, x0TensorGrad)
   }
 
   private def buildShapeModule(): Reshape[Float] = {
     Reshape(Array(batchSize, xDim), Some(false))
   }
 
-  private def buildCrossMMLayers(): Array[MM[Float]] = {
-    val layers = ArrayBuffer[MM[Float]]()
-    for (i <- 0 until crossDepth) {
-      layers += MM()
+  private def buildCrossMMLayers(): Array[Sequential[Float]] = {
+    val layers = ArrayBuffer[Sequential[Float]]()
+    for (_ <- 0 until crossDepth) {
+      layers += Sequential[Float]()
+        .add(MM(transA = true, transB = false))
+        .add(Transpose(Array((1, 2))))
     }
     layers.toArray
   }
@@ -125,7 +163,6 @@ class CrossEncoder(batchSize: Int,
 
   private def buildDNNModule(): Sequential[Float] = {
     val encoder = Sequential[Float]()
-      .add(Reshape(Array(batchSize, nFields * embeddingDim), Some(false)))
 
     for (linearLayer <- dnnLinearLayers) {
       encoder.add(linearLayer)
@@ -160,7 +197,7 @@ class CrossEncoder(batchSize: Int,
   private def getDNNParameterSize: Int = {
     val dims = Array(xDim) ++ fcDims
     (1 until dims.length)
-      .map(i => nFields * dims(i - 1) * dims(i) + dims(i))
+      .map(i => xDim * dims(i) + dims(i))
       .sum
   }
 }
