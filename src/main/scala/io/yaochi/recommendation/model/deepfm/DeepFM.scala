@@ -57,8 +57,8 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
               bias: Array[Float],
               embedding: Array[Float],
               mats: Array[Float]): Array[Float] = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
 
     val firstOrderEncoder = FirstOrderEncoder(batchSize)
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
@@ -72,7 +72,7 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor)
 
     val outputModule = InternalDeepFMModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
@@ -87,8 +87,8 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
                embedding: Array[Float],
                mats: Array[Float],
                targets: Array[Float]): Float = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
 
     val firstOrderEncoder = FirstOrderEncoder(batchSize)
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
@@ -102,7 +102,7 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor)
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val outputModule = InternalDeepFMModel.buildOutputModule()

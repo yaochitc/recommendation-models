@@ -10,7 +10,7 @@ import scala.reflect.ClassTag
 class Scatter[T: ClassTag](batchSize: Int, nOutput: Int)(implicit ev: TensorNumeric[T])
   extends AbstractModule[Table, Tensor[T], T] {
   output = Tensor[T]()
-  gradInput = T.array(Array(Tensor[T]()))
+  gradInput = T(Tensor[T]())
 
   protected val inputBuffer: Tensor[Int] = Tensor[Int]()
 

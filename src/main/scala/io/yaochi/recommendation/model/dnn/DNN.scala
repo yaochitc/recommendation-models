@@ -57,9 +57,6 @@ private[dnn] class InternalDNNModel(nFields: Int,
               bias: Array[Float],
               embedding: Array[Float],
               mats: Array[Float]): Array[Float] = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
-
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
@@ -67,7 +64,7 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(higherOrderTensor, biasTensor))
+    val inputTable = T(higherOrderTensor, biasTensor)
 
     val outputModule = InternalDNNModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
@@ -82,9 +79,6 @@ private[dnn] class InternalDNNModel(nFields: Int,
                embedding: Array[Float],
                mats: Array[Float],
                targets: Array[Float]): Float = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
-
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
@@ -92,7 +86,7 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
     val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
 
-    val inputTable = T.array(Array(higherOrderTensor, biasTensor))
+    val inputTable = T(higherOrderTensor, biasTensor)
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val outputModule = InternalDNNModel.buildOutputModule()

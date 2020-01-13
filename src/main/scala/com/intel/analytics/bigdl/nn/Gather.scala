@@ -11,7 +11,7 @@ class Gather[T: ClassTag](batchSize: Int, numPairs: Int, embeddingSize: Int)
                          (implicit ev: TensorNumeric[T])
   extends AbstractModule[Table, Table, T] {
   output = T()
-  gradInput = T.array(Array(Tensor[T]()))
+  gradInput = T(Tensor[T]())
 
   protected val rowBuffer: Tensor[Int] = Tensor[Int]()
   protected val colBuffer: Tensor[Int] = Tensor[Int]()
@@ -59,7 +59,6 @@ class Gather[T: ClassTag](batchSize: Int, numPairs: Int, embeddingSize: Int)
     colBuffer.set(colTensor.storage(),
       colTensor.storageOffset(),
       Array(colTensor.nElement()))
-
 
     val gradTensor = gradInput[Tensor[T]](1)
     gradTensor.resizeAs(inputTensor)

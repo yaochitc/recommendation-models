@@ -45,13 +45,13 @@ private[lr] class InternalLRModel extends Serializable {
               weights: Array[Float],
               bias: Array[Float]): Array[Float] = {
     val encoder = FirstOrderEncoder(batchSize)
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
     val weightTensor = encoder.forward(weightTable)
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
     val outputModule = InternalLRModel.buildOutputModule()
-    val inputTable = T.array(Array(weightTensor, biasTensor))
+    val inputTable = T(weightTensor, biasTensor)
     val outputTensor = outputModule.forward(inputTable)
       .toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
@@ -64,12 +64,12 @@ private[lr] class InternalLRModel extends Serializable {
                bias: Array[Float],
                targets: Array[Float]): Float = {
     val encoder = FirstOrderEncoder(batchSize)
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
     val weightTensor = encoder.forward(weightTable)
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val inputTable = T.array(Array(weightTensor, biasTensor))
+    val inputTable = T(weightTensor, biasTensor)
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val outputModule = InternalLRModel.buildOutputModule()

@@ -62,8 +62,8 @@ private[pnn] class InternalPNNModel(nFields: Int,
               bias: Array[Float],
               embedding: Array[Float],
               mats: Array[Float]): Array[Float] = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
 
     val firstOrderEncoder = FirstOrderEncoder(batchSize)
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
@@ -78,7 +78,7 @@ private[pnn] class InternalPNNModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset, reshape = false)
     val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T(firstOrderTensor, higherOrderTensor, biasTensor)
 
     val outputModule = InternalPNNModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
@@ -93,8 +93,8 @@ private[pnn] class InternalPNNModel(nFields: Int,
                embedding: Array[Float],
                mats: Array[Float],
                targets: Array[Float]): Float = {
-    val weightTable = T.array(Array(Tensor.apply(weights, Array(weights.length)),
-      Tensor.apply(index, Array(index.length))))
+    val weightTable = T(Tensor.apply(weights, Array(weights.length)),
+      Tensor.apply(index, Array(index.length)))
 
     val firstOrderEncoder = FirstOrderEncoder(batchSize)
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
@@ -109,7 +109,7 @@ private[pnn] class InternalPNNModel(nFields: Int,
     val higherOrderEncoder = HigherOrderEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset, reshape = false)
     val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 
-    val inputTable = T.array(Array(firstOrderTensor, higherOrderTensor, biasTensor))
+    val inputTable = T(firstOrderTensor, higherOrderTensor, biasTensor)
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
     val outputModule = InternalPNNModel.buildOutputModule()
