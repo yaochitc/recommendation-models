@@ -1,22 +1,32 @@
-package io.yaochi.recommendation.model.deepfm
+package io.yaochi.recommendation.model.dcn
 
-import com.intel.analytics.bigdl.nn._
+import com.intel.analytics.bigdl.nn.{BCECriterion, CAddTable, Sequential, Sigmoid}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import io.yaochi.recommendation.model.encoder.{FirstOrderEncoder, HigherOrderEncoder, SecondOrderEncoder}
+import io.yaochi.recommendation.model.encoder.FirstOrderEncoder
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
 import io.yaochi.recommendation.util.GradUtil
 
-class DeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
+class DCN(inputDim: Int, nFields: Int, embeddingDim: Int, crossDepth: Int, fcDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
 
-  private val innerModel = new InternalDeepFMModel(nFields, embeddingDim, fcDims)
+  private val innerModel = new InternalDCNModel(nFields, embeddingDim, crossDepth, fcDims)
 
   override def getMatsSize: Array[Int] = {
-    val dims = Array(nFields * embeddingDim) ++ fcDims ++ Array(1)
-    (1 until dims.length)
-      .map(i => Array(dims(i - 1), dims(i), dims(i), 1))
+    val xDim = nFields * embeddingDim
+    val crossParamSize = (0 until crossDepth)
+      .map(i => Array(xDim, 1))
+      .reduce(_ ++ _) ++ (0 until crossDepth)
+      .map(i => Array(1, 1))
       .reduce(_ ++ _)
+
+    val fcDimsArr = Array(xDim) ++ fcDims
+    val fcParamSize = (1 until fcDimsArr.length)
+      .map(i => Array(fcDimsArr(i - 1), fcDimsArr(i), fcDimsArr(i), 1))
+      .reduce(_ ++ _)
+
+    val concatedInputDim = xDim + fcDims.last
+    crossParamSize ++ fcParamSize ++ Array(concatedInputDim, 1)
   }
 
   override def getInputDim: Int = inputDim
@@ -45,12 +55,12 @@ class DeepFM(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
 
     innerModel.backward(batchSize, index, weights, bias, embedding, mats, targets)
   }
-
 }
 
-private[deepfm] class InternalDeepFMModel(nFields: Int,
-                                          embeddingDim: Int,
-                                          fcDims: Array[Int]) extends Serializable {
+private[dcn] class InternalDCNModel(nFields: Int,
+                                    embeddingDim: Int,
+                                    crossDepth: Int,
+                                    fcDims: Array[Int]) extends Serializable {
   def forward(batchSize: Int,
               index: Array[Int],
               weights: Array[Float],
@@ -64,17 +74,14 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
 
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
-    val secondOrderEncoder = SecondOrderEncoder(batchSize, nFields, embeddingDim)
-    val secondOrderTensor = secondOrderEncoder.forward(embeddingTensor)
+    val crossEncoder = CrossEncoder(batchSize, nFields, embeddingDim, crossDepth, fcDims, mats)
+    val crossOutputTensor = crossEncoder.forward(embeddingTensor)
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
-    val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
+    val inputTable = T(firstOrderTensor, crossOutputTensor, biasTensor)
 
-    val inputTable = T(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor)
-
-    val outputModule = InternalDeepFMModel.buildOutputModule()
+    val outputModule = InternalDCNModel.buildOutputModule()
     val outputTensor = outputModule.forward(inputTable).toTensor[Float]
     (0 until outputTensor.nElement()).map(i => outputTensor.valueAt(i + 1, 1))
       .toArray
@@ -94,37 +101,33 @@ private[deepfm] class InternalDeepFMModel(nFields: Int,
     val firstOrderTensor = firstOrderEncoder.forward(weightTable)
 
     val embeddingTensor = Tensor.apply(embedding, Array(embedding.length))
-    val secondOrderEncoder = SecondOrderEncoder(batchSize, nFields, embeddingDim)
-    val secondOrderTensor = secondOrderEncoder.forward(embeddingTensor)
+    val crossEncoder = CrossEncoder(batchSize, nFields, embeddingDim, crossDepth, fcDims, mats)
+    val crossOutputTensor = crossEncoder.forward(embeddingTensor)
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val higherOrderEncoder = HigherOrderEncoder(batchSize, nFields * embeddingDim, fcDims, mats)
-    val higherOrderTensor = higherOrderEncoder.forward(embeddingTensor)
-
-    val inputTable = T(firstOrderTensor, secondOrderTensor, higherOrderTensor, biasTensor)
+    val inputTable = T(firstOrderTensor, crossOutputTensor, biasTensor)
     val targetTensor = Tensor.apply(targets.map(label => if (label > 0) 1.0f else 0f), Array(targets.length, 1))
 
-    val outputModule = InternalDeepFMModel.buildOutputModule()
-    val criterion = InternalDeepFMModel.buildCriterion()
+    val outputModule = InternalDCNModel.buildOutputModule()
+    val criterion = InternalDCNModel.buildCriterion()
     val outputTensor = outputModule.forward(inputTable)
     val loss = criterion.forward(outputTensor, targetTensor)
     val gradTable = outputModule.backward(inputTable, criterion.backward(outputTensor, targetTensor)).toTable
 
     val weightGradTensor = firstOrderEncoder.backward(weightTable, gradTable[Tensor[Float]](1))[Tensor[Float]](1)
-    val secondOrderGradTensor = secondOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
-    val higherOrderGradTensor = higherOrderEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](3))
-    val biasGradTensor = gradTable[Tensor[Float]](4)
+    val embeddingGradTensor = crossEncoder.backward(embeddingTensor, gradTable[Tensor[Float]](2))
+    val biasGradTensor = gradTable[Tensor[Float]](3)
 
     GradUtil.weightsGrad(weights, weightGradTensor)
     GradUtil.biasGrad(bias, biasGradTensor)
-    GradUtil.embeddingGrad(embedding, Array(secondOrderGradTensor, higherOrderGradTensor))
+    GradUtil.embeddingGrad(embedding, Array(embeddingGradTensor))
 
     loss
   }
 }
 
-private[deepfm] object InternalDeepFMModel {
+private[dcn] object InternalDCNModel {
   def buildCriterion() = new BCECriterion[Float]()
 
   def buildOutputModule(): Sequential[Float] = {
