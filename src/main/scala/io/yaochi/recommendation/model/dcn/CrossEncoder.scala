@@ -195,7 +195,7 @@ class CrossEncoder(batchSize: Int,
   private def getDNNParameterSize: Int = {
     val dims = Array(xDim) ++ fcDims
     (1 until dims.length)
-      .map(i => xDim * dims(i) + dims(i))
+      .map(i => dims(i - 1) * dims(i) + dims(i))
       .sum
   }
 }
