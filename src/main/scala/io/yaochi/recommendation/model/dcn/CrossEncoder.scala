@@ -21,7 +21,7 @@ class CrossEncoder(batchSize: Int,
 
   private val crossLinearLayers = buildCrossLinearLayers()
 
-  private val crossMMLayers = buildCrossMMLayers()
+  private val crossMMLayers = buildCrossMulLayers()
 
   private val crossBiasOffset = start + xDim * crossDepth
 
@@ -86,7 +86,7 @@ class CrossEncoder(batchSize: Int,
         .toTable
       x0TensorGrad.add(mmGradTable[Tensor[Float]](1))
 
-      xkGradTensor.add(crossLinearLayers(i).backward(inputTensor, mmGradTable[Tensor[Float]](2)))
+      xkGradTensor.add(crossLinearLayers(i).backward(inputTensor, mmGradTable[Tensor[Float]](2).sum(2)))
       lastGradTensor = xkGradTensor
     }
 
@@ -94,7 +94,7 @@ class CrossEncoder(batchSize: Int,
     for (linearLayer <- crossLinearLayers) {
       val inputSize = linearLayer.inputSize
       BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize * 1
+      curOffset += inputSize
     }
 
     for (biasLayer <- crossBiasLayers) {
@@ -120,12 +120,10 @@ class CrossEncoder(batchSize: Int,
     Reshape(Array(batchSize, xDim), Some(false))
   }
 
-  private def buildCrossMMLayers(): Array[Sequential[Float]] = {
-    val layers = ArrayBuffer[Sequential[Float]]()
+  private def buildCrossMulLayers(): Array[CMulTable[Float]] = {
+    val layers = ArrayBuffer[CMulTable[Float]]()
     for (_ <- 0 until crossDepth) {
-      layers += Sequential[Float]()
-        .add(MM(transA = true, transB = false))
-        .add(Transpose(Array((1, 2))))
+      layers += CMulTable[Float]()
     }
     layers.toArray
   }

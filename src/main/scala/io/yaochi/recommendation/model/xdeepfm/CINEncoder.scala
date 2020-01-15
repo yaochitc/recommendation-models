@@ -33,9 +33,9 @@ class CINEncoder(batchSize: Int,
 
   private val outputModule = buildOutputModule()
 
-  private var cinOutputTable: Table = _
+  private var cinInputTensors: Array[Tensor[Float]] = _
 
-  private var cinInputTable: Table = _
+  private var cinOutputTensors: Array[Tensor[Float]] = _
 
   def forward(input: Tensor[Float]): Tensor[Float] = {
     val x0Tensor = shapeModule.forward(input)
@@ -50,10 +50,10 @@ class CINEncoder(batchSize: Int,
       outputTensors += xkTensor.toTensor[Float]
     }
 
-    cinOutputTable = T.array(outputTensors.toArray)
-    cinInputTable = T.array(inputTensors.toArray)
+    cinInputTensors = inputTensors.toArray
+    cinOutputTensors = outputTensors.toArray
 
-    val dinOutputTensor = sumModule.forward(cinOutputTable)
+    val dinOutputTensor = sumModule.forward(T.array(cinOutputTensors))
 
     val dnnOutputTensor = dnnModule.forward(input).toTensor[Float]
 
@@ -71,7 +71,7 @@ class CINEncoder(batchSize: Int,
     val dnnGradTensor = dnnModule.backward(input, outputModuleGradTable[Tensor[Float]](2))
       .toTensor[Float]
 
-    val sumModuleGradTable = sumModule.backward(cinOutputTable, outputModuleGradTable[Tensor[Float]](1))
+    val sumModuleGradTable = sumModule.backward(T.array(cinOutputTensors), outputModuleGradTable[Tensor[Float]](1))
       .toTable
 
     val x0Tensor = shapeModule.output.toTensor[Float]
@@ -80,7 +80,7 @@ class CINEncoder(batchSize: Int,
     for (i <- cinModules.length to 1 by -1) {
       var lastGradTensor = sumModuleGradTable[Tensor[Float]](i)
       for (j <- i to 1 by -1) {
-        val cinInputTensor = cinInputTable[Tensor[Float]](j)
+        val cinInputTensor = cinInputTensors(j - 1)
         val cinGradTable = cinModules(j - 1).backward(T.apply(x0Tensor, cinInputTensor), lastGradTensor)
           .toTable
         x0TensorGrad.add(cinGradTable[Tensor[Float]](1))
