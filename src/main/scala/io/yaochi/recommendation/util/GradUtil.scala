@@ -5,30 +5,31 @@ import com.intel.analytics.bigdl.tensor.Tensor
 object GradUtil {
 
   def weightsGrad(weights: Array[Float],
-                      weightGradTensor: Tensor[Float]
-                     ): Unit = {
-    for (i <- 0 until weightGradTensor.nElement()) {
-      weights(i) = weightGradTensor.valueAt(i + 1)
-    }
+                  weightGradTensor: Tensor[Float]): Unit = {
+    val gradWeightArray = weightGradTensor.storage().array()
+    val gradWeightOffset = weightGradTensor.storageOffset() - 1
+
+    Array.copy(gradWeightArray, gradWeightOffset, weights, 0, weights.length)
   }
 
   def biasGrad(bias: Array[Float],
-                   biasGradTensor: Tensor[Float]): Unit = {
-    for (i <- bias.indices) {
-      bias(i) = biasGradTensor.valueAt(i + 1)
-    }
+               biasGradTensor: Tensor[Float]): Unit = {
+    val gradBiasArray = biasGradTensor.storage().array()
+    val gradBiasOffset = biasGradTensor.storageOffset() - 1
+
+    Array.copy(gradBiasArray, gradBiasOffset, bias, 0, bias.length)
   }
 
   def embeddingGrad(embedding: Array[Float],
-                        gradTensors: Array[Tensor[Float]]): Unit = {
-    for (i <- embedding.indices) {
-      embedding(i) = 0
+                    gradTensors: Array[Tensor[Float]]): Unit = {
+    val embeddingGradTensor = Tensor[Float]().resizeAs(gradTensors(0))
+    for (gradTensor <- gradTensors) {
+      embeddingGradTensor.add(gradTensor)
     }
 
-    for (gradTensor <- gradTensors) {
-      for (i <- 0 until gradTensor.nElement()) {
-        embedding(i) = gradTensor.valueAt(i + 1)
-      }
-    }
+    val gradEmbeddingArray = embeddingGradTensor.storage().array()
+    val gradEmbeddingOffset = embeddingGradTensor.storageOffset() - 1
+
+    Array.copy(gradEmbeddingArray, gradEmbeddingOffset, embedding, 0, embedding.length)
   }
 }

@@ -9,17 +9,15 @@ object LayerUtil {
                   mats: Array[Float],
                   withBias: Boolean,
                   offset: Int): Linear[Float] = {
-    val weightTensor = Tensor[Float](outputSize, inputSize)
-
-    for (i <- 0 until outputSize; j <- 0 until inputSize) {
-      weightTensor.setValue(i + 1, j + 1, mats(offset + i * inputSize + j))
-    }
+    val weightSize = outputSize * inputSize
+    val weights = Array.ofDim[Float](weightSize)
+    Array.copy(mats, offset, weights, 0, weightSize)
+    val weightTensor = Tensor.apply(weights, Array(outputSize, inputSize))
 
     if (withBias) {
-      val biasTensor = Tensor[Float](outputSize)
-      for (i <- 0 until outputSize) {
-        biasTensor.setValue(i + 1, mats(offset + inputSize * outputSize + i))
-      }
+      val bias = Array.ofDim[Float](outputSize)
+      Array.copy(mats, offset + weightSize, bias, 0, outputSize)
+      val biasTensor = Tensor.apply(bias, Array(outputSize))
 
       Linear[Float](inputSize, outputSize, initWeight = weightTensor, initBias = biasTensor)
     } else {
@@ -33,9 +31,10 @@ object LayerUtil {
     val biasLayer = CAdd[Float](Array(outputSize))
 
     val biasTensor = biasLayer.bias
-    for (i <- 0 until outputSize) {
-      biasTensor.setValue(i + 1, mats(offset + i))
-    }
+
+    val biasOffset = biasTensor.storageOffset() - 1
+    val biasArray = biasTensor.storage().array()
+    Array.copy(mats, offset, biasArray, biasOffset, outputSize)
 
     biasLayer
   }
