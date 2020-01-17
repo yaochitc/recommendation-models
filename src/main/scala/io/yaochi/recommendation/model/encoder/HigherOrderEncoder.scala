@@ -23,11 +23,7 @@ class HigherOrderEncoder(batchSize: Int,
     val gradTensor = module.backward(input, gradOutput).toTensor[Float]
     var curOffset = start
     for (linearLayer <- linearLayers) {
-      val inputSize = linearLayer.inputSize
-      val outputSize = linearLayer.outputSize
-
-      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize * outputSize + outputSize
+      curOffset = BackwardUtil.linearBackward(linearLayer, mats, curOffset)
     }
 
     BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)

@@ -91,17 +91,11 @@ class CINEncoder(batchSize: Int,
 
     var curOffset = start
     for (linearLayer <- dnnLinearLayers) {
-      val inputSize = linearLayer.inputSize
-      val outputSize = linearLayer.outputSize
-      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize * outputSize + outputSize
+      curOffset = BackwardUtil.linearBackward(linearLayer, mats, curOffset)
     }
 
     for (linearLayer <- cinLinearLayers) {
-      val inputSize = linearLayer.inputSize
-      val outputSize = linearLayer.outputSize
-      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize * outputSize + outputSize
+      curOffset = BackwardUtil.linearBackward(linearLayer, mats, curOffset)
     }
 
     BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)

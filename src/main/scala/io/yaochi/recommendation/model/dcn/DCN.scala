@@ -19,7 +19,7 @@ class DCN(inputDim: Int, nFields: Int, embeddingDim: Int, crossDepth: Int, fcDim
       .reduce(_ ++ _)
 
     val crossBiasParamSize = (0 until crossDepth)
-      .map(i => Array(1, 1))
+      .map(i => Array(xDim, 1))
       .reduce(_ ++ _)
 
     val fcDimsArr = Array(xDim) ++ fcDims

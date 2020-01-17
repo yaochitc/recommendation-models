@@ -64,12 +64,10 @@ class ProductEncoder(batchSize: Int,
     gradTensor.add(productInnerReshape.backward(input, productInnerGradTable[Tensor[Float]](1)).toTensor[Float])
 
     var curOffset = start
-    BackwardUtil.linearBackward(productOutLinearLayer, mats, curOffset)
+    curOffset = BackwardUtil.linearBackward(productOutLinearLayer, mats, curOffset)
 
-    curOffset = productInnerLinearOffset
-    BackwardUtil.linearBackward(productInnerLinearLayer, mats, curOffset)
+    curOffset = BackwardUtil.linearBackward(productInnerLinearLayer, mats, curOffset)
 
-    curOffset = productOutputBiasOffset
     BackwardUtil.biasBackward(productOutputBiasLayer, mats, curOffset)
 
     gradTensor

@@ -29,7 +29,7 @@ class CrossEncoder(batchSize: Int,
 
   private val crossAddLayers = buildAddLayers()
 
-  private val dnnLinearOffset = crossBiasOffset + 1 * crossDepth
+  private val dnnLinearOffset = crossBiasOffset + xDim * crossDepth
 
   private val dnnLinearLayers = buildLinearLayers()
 
@@ -92,21 +92,15 @@ class CrossEncoder(batchSize: Int,
 
     var curOffset = start
     for (linearLayer <- crossLinearLayers) {
-      val inputSize = linearLayer.inputSize
-      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize
+      curOffset = BackwardUtil.linearBackward(linearLayer, mats, curOffset)
     }
 
     for (biasLayer <- crossBiasLayers) {
-      BackwardUtil.biasBackward(biasLayer, mats, curOffset)
-      curOffset += 1
+      curOffset = BackwardUtil.biasBackward(biasLayer, mats, curOffset)
     }
 
     for (linearLayer <- dnnLinearLayers) {
-      val inputSize = linearLayer.inputSize
-      val outputSize = linearLayer.outputSize
-      BackwardUtil.linearBackward(linearLayer, mats, curOffset)
-      curOffset += inputSize * outputSize + outputSize
+      curOffset = BackwardUtil.linearBackward(linearLayer, mats, curOffset)
     }
 
     BackwardUtil.linearBackward(outputLinearLayer, mats, curOffset)
@@ -153,8 +147,8 @@ class CrossEncoder(batchSize: Int,
     val layers = ArrayBuffer[CAdd[Float]]()
     var curOffset = crossBiasOffset
     for (i <- 0 until crossDepth) {
-      layers += LayerUtil.buildBiasLayer(1, mats, curOffset)
-      curOffset += 1
+      layers += LayerUtil.buildBiasLayer(xDim, mats, curOffset)
+      curOffset += xDim
     }
     layers.toArray
   }
