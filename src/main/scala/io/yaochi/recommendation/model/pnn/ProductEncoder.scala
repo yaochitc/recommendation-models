@@ -17,21 +17,17 @@ class ProductEncoder(batchSize: Int,
 
   private val (rowTensor, colTensor) = calcIndices()
 
-  private val productOutLinearLayer = LayerUtil.buildLinear(nFields * embeddingDim, outputDim, mats, false, start)
+  private val (productOutLinearLayer, productOutLinearEndOffset) = buildProductOutLinearLayer()
 
   private val productOutModule = buildProductOutModule()
 
-  private val productInnerLinearOffset = start + nFields * embeddingDim * outputDim
-
-  private val productInnerLinearLayer = LayerUtil.buildLinear(numPairs, outputDim, mats, false, productInnerLinearOffset)
+  private val (productInnerLinearLayer, productInnerLinearEndOffset) = buildProductInnerLinearLayer()
 
   private val productInnerReshape = Reshape[Float](Array(batchSize, nFields, embeddingDim), Some(false))
 
   private val productInnerModule = buildProductInnerModule()
 
-  private val productOutputBiasOffset = productInnerLinearOffset + numPairs * outputDim
-
-  private val productOutputBiasLayer = LayerUtil.buildBiasLayer(outputDim, mats, productOutputBiasOffset)
+  private val (productOutputBiasLayer, productOutputBiasEndOffset) = buildProductOutputBiasLayer()
 
   private val productOutputModule = buildOutputModule()
 
@@ -79,6 +75,12 @@ class ProductEncoder(batchSize: Int,
       .add(productOutLinearLayer)
   }
 
+  def buildProductOutLinearLayer(): (Linear[Float], Int) = {
+    val layer = LayerUtil.buildLinear(nFields * embeddingDim, outputDim, mats, false, start)
+    val curOffset = start + nFields * embeddingDim * outputDim
+    (layer, curOffset)
+  }
+
   def buildProductInnerModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(Gather(batchSize, numPairs, embeddingDim))
@@ -86,11 +88,23 @@ class ProductEncoder(batchSize: Int,
       .add(productInnerLinearLayer)
   }
 
+  def buildProductInnerLinearLayer(): (Linear[Float], Int) = {
+    val layer = LayerUtil.buildLinear(numPairs, outputDim, mats, false, productOutLinearEndOffset)
+    val curOffset = productOutLinearEndOffset + numPairs * outputDim
+    (layer, curOffset)
+  }
+
   def buildOutputModule(): Sequential[Float] = {
     Sequential[Float]()
       .add(CAddTable())
       .add(productOutputBiasLayer)
       .add(ReLU())
+  }
+
+  def buildProductOutputBiasLayer(): (CAdd[Float], Int) = {
+    val layer = LayerUtil.buildBiasLayer(1, mats, productInnerLinearEndOffset)
+    val curOffset = productInnerLinearEndOffset + 1
+    (layer, curOffset)
   }
 
   def calcIndices(): (Tensor[Int], Tensor[Int]) = {
@@ -105,8 +119,8 @@ class ProductEncoder(batchSize: Int,
       Tensor.apply(cols.toArray, Array(cols.length)))
   }
 
-  def getParameterSize: Int = {
-    productInnerLinearOffset + numPairs * outputDim + 1
+  def getEndOffset: Int = {
+    productOutputBiasEndOffset
   }
 }
 

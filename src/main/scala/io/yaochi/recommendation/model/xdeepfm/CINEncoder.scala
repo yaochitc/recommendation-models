@@ -2,7 +2,7 @@ package io.yaochi.recommendation.model.xdeepfm
 
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.tensor.Tensor
-import com.intel.analytics.bigdl.utils.{T, Table}
+import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.util.{BackwardUtil, LayerUtil}
 
 import scala.collection.mutable.ArrayBuffer
@@ -17,17 +17,13 @@ class CINEncoder(batchSize: Int,
                  start: Int = 0) {
   private val shapeModule = buildShapeModule()
 
-  private val dnnLinearLayers = buildLinearLayers()
+  private val (dnnLinearLayers, dnnLinearEndOffset) = buildLinearLayers()
 
   private val dnnModule = buildDNNModule()
 
-  private val cinLinearOffset = start + getDNNParameterSize
-
-  private val (cinLinearLayers, cinModules) = buildCINModules()
+  private val (cinLinearLayers, cinModules, cinModulesEndOffset) = buildCINModules()
 
   private val sumModule = buildSumModule()
-
-  private val outputLinearOffset = cinLinearOffset + getCINParameterSize
 
   private val outputLinearLayer = buildOutputLinearLayer()
 
@@ -124,7 +120,7 @@ class CINEncoder(batchSize: Int,
     encoder
   }
 
-  private def buildLinearLayers(): Array[Linear[Float]] = {
+  private def buildLinearLayers(): (Array[Linear[Float]], Int) = {
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = start
     var dim = nFields * embeddingDim
@@ -133,13 +129,13 @@ class CINEncoder(batchSize: Int,
       curOffset += dim * fcDim + fcDim
       dim = fcDim
     }
-    layers.toArray
+    (layers.toArray, curOffset)
   }
 
-  private def buildCINModules(): (Array[Linear[Float]], Array[Sequential[Float]]) = {
+  private def buildCINModules(): (Array[Linear[Float]], Array[Sequential[Float]], Int) = {
     val modules = ArrayBuffer[Sequential[Float]]()
     var lastCinDim = nFields
-    var curOffset = cinLinearOffset
+    var curOffset = dnnLinearEndOffset
     val linearLayers = ArrayBuffer[Linear[Float]]()
     for (cinDim <- cinDims) {
       val linearLayer = LayerUtil.buildLinear(nFields * lastCinDim, cinDim, mats, true, curOffset)
@@ -148,7 +144,7 @@ class CINEncoder(batchSize: Int,
       curOffset += nFields * lastCinDim * cinDim + cinDim
       lastCinDim = cinDim
     }
-    (linearLayers.toArray, modules.toArray)
+    (linearLayers.toArray, modules.toArray, curOffset)
   }
 
   private def buildCINModule(linearLayer: Linear[Float], lastCinDim: Int, cinDim: Int, curOffset: Int): Sequential[Float] = {
@@ -176,21 +172,7 @@ class CINEncoder(batchSize: Int,
 
   private def buildOutputLinearLayer(): Linear[Float] = {
     val dim = cinDims.sum + fcDims.last
-    LayerUtil.buildLinear(dim, 1, mats, false, outputLinearOffset)
-  }
-
-  private def getDNNParameterSize: Int = {
-    val dims = Array(nFields * embeddingDim) ++ fcDims
-    (1 until dims.length)
-      .map(i => dims(i - 1) * dims(i) + dims(i))
-      .sum
-  }
-
-  private def getCINParameterSize: Int = {
-    val dims = Array(nFields) ++ cinDims
-    (1 until dims.length)
-      .map(i => nFields * dims(i - 1) * dims(i) + dims(i))
-      .sum
+    LayerUtil.buildLinear(dim, 1, mats, false, cinModulesEndOffset)
   }
 }
 

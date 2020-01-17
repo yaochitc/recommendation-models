@@ -5,7 +5,7 @@ import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
 import io.yaochi.recommendation.model.encoder.{FirstOrderEncoder, HigherOrderEncoder}
 import io.yaochi.recommendation.model.{RecModel, RecModelType}
-import io.yaochi.recommendation.util.{BackwardUtil, GradUtil}
+import io.yaochi.recommendation.util.GradUtil
 
 class PNN(inputDim: Int, nFields: Int, embeddingDim: Int, fcDims: Array[Int])
   extends RecModel(RecModelType.BIAS_WEIGHT_EMBEDDING_MATS) {
@@ -74,7 +74,7 @@ private[pnn] class InternalPNNModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val offset = productEncoder.getParameterSize
+    val offset = productEncoder.getEndOffset
     val higherOrderEncoder = HigherOrderEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset, reshape = false)
     val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 
@@ -105,7 +105,7 @@ private[pnn] class InternalPNNModel(nFields: Int,
 
     val biasTensor = Tensor.apply(bias, Array(bias.length))
 
-    val offset = productEncoder.getParameterSize
+    val offset = productEncoder.getEndOffset
     val higherOrderEncoder = HigherOrderEncoder(batchSize, fcDims.head, fcDims.slice(1, fcDims.length), mats, offset, reshape = false)
     val higherOrderTensor = higherOrderEncoder.forward(productTensor)
 

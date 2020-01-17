@@ -19,23 +19,17 @@ class CrossEncoder(batchSize: Int,
 
   private val shapeModule = buildShapeModule()
 
-  private val crossLinearLayers = buildCrossLinearLayers()
+  private val (crossLinearLayers, crossBiasOffset) = buildCrossLinearLayers()
 
-  private val crossMMLayers = buildCrossMulLayers()
+  private val crossMMModules = buildCrossMMModules()
 
-  private val crossBiasOffset = start + xDim * crossDepth
+  private val (crossBiasLayers, dnnLinearOffset) = buildCrossBiasLayers()
 
-  private val crossBiasLayers = buildCrossBiasLayers()
+  private val crossOutputModules = buildCrossOutputModules()
 
-  private val crossAddLayers = buildAddLayers()
-
-  private val dnnLinearOffset = crossBiasOffset + xDim * crossDepth
-
-  private val dnnLinearLayers = buildLinearLayers()
+  private val (dnnLinearLayers, outputLinearOffset) = buildLinearLayers()
 
   private val dnnModule = buildDNNModule()
-
-  private val outputLinearOffset = dnnLinearOffset + getDNNParameterSize
 
   private val outputLinearLayer = buildOutputLinearLayer()
 
@@ -50,8 +44,8 @@ class CrossEncoder(batchSize: Int,
     for (i <- 0 until crossDepth) {
       inputTensors += xkTensor
       val linearOutputTensor = crossLinearLayers(i).forward(xkTensor)
-      val mmOutputTensor = crossMMLayers(i).forward(T(x0Tensor, linearOutputTensor))
-      xkTensor = crossAddLayers(i).forward(T(mmOutputTensor, xkTensor)).toTensor[Float]
+      val mmOutputTensor = crossMMModules(i).forward(T(x0Tensor, linearOutputTensor))
+      xkTensor = crossOutputModules(i).forward(T(mmOutputTensor, xkTensor)).toTensor[Float]
     }
 
     crossInputTensors = inputTensors.toArray
@@ -62,7 +56,7 @@ class CrossEncoder(batchSize: Int,
 
   def backward(input: Tensor[Float], gradOutput: Tensor[Float]): Tensor[Float] = {
     val outputModuleInput = T.apply(
-      crossAddLayers(crossDepth - 1).output.toTensor[Float],
+      crossOutputModules(crossDepth - 1).output.toTensor[Float],
       dnnModule.output.toTensor[Float]
     )
 
@@ -77,16 +71,16 @@ class CrossEncoder(batchSize: Int,
     for (i <- crossDepth - 1 to 0 by -1) {
       val xkGradTensor = Tensor[Float]().resizeAs(x0Tensor)
       val inputTensor = crossInputTensors(i)
-      val mmOutputTensor = crossMMLayers(i).output.toTensor[Float]
-      val addGradTable = crossAddLayers(i).backward(T(mmOutputTensor, inputTensor), lastGradTensor)
+      val mmOutputTensor = crossMMModules(i).output.toTensor[Float]
+      val addGradTable = crossOutputModules(i).backward(T(mmOutputTensor, inputTensor), lastGradTensor)
         .toTable
       xkGradTensor.add(addGradTable[Tensor[Float]](2))
       val linearOutputTensor = crossLinearLayers(i).output.toTensor[Float]
-      val mmGradTable = crossMMLayers(i).backward(T(x0Tensor, linearOutputTensor), addGradTable[Tensor[Float]](1))
+      val mmGradTable = crossMMModules(i).backward(T(x0Tensor, linearOutputTensor), addGradTable[Tensor[Float]](1))
         .toTable
       x0TensorGrad.add(mmGradTable[Tensor[Float]](1))
 
-      xkGradTensor.add(crossLinearLayers(i).backward(inputTensor, mmGradTable[Tensor[Float]](2).sum(2)))
+      xkGradTensor.add(crossLinearLayers(i).backward(inputTensor, mmGradTable[Tensor[Float]](2)))
       lastGradTensor = xkGradTensor
     }
 
@@ -114,15 +108,20 @@ class CrossEncoder(batchSize: Int,
     Reshape(Array(batchSize, xDim), Some(false))
   }
 
-  private def buildCrossMulLayers(): Array[CMulTable[Float]] = {
-    val layers = ArrayBuffer[CMulTable[Float]]()
+  private def buildCrossMMModules(): Array[Sequential[Float]] = {
+    val layers = ArrayBuffer[Sequential[Float]]()
     for (_ <- 0 until crossDepth) {
-      layers += CMulTable[Float]()
+      layers += Sequential[Float]()
+        .add(ParallelTable[Float]()
+          .add(Unsqueeze(3))
+          .add(Unsqueeze(3)))
+        .add(MM[Float]())
+        .add(Squeeze(3))
     }
     layers.toArray
   }
 
-  private def buildAddLayers(): Array[Sequential[Float]] = {
+  private def buildCrossOutputModules(): Array[Sequential[Float]] = {
     val layers = ArrayBuffer[Sequential[Float]]()
     for (i <- 0 until crossDepth) {
       layers += Sequential[Float]()
@@ -132,25 +131,24 @@ class CrossEncoder(batchSize: Int,
     layers.toArray
   }
 
-
-  private def buildCrossLinearLayers(): Array[Linear[Float]] = {
+  private def buildCrossLinearLayers(): (Array[Linear[Float]], Int) = {
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = start
-    for (i <- 0 until crossDepth) {
+    for (_ <- 0 until crossDepth) {
       layers += LayerUtil.buildLinear(xDim, 1, mats, false, curOffset)
       curOffset += xDim * 1
     }
-    layers.toArray
+    (layers.toArray, curOffset)
   }
 
-  private def buildCrossBiasLayers(): Array[CAdd[Float]] = {
+  private def buildCrossBiasLayers(): (Array[CAdd[Float]], Int) = {
     val layers = ArrayBuffer[CAdd[Float]]()
     var curOffset = crossBiasOffset
     for (i <- 0 until crossDepth) {
-      layers += LayerUtil.buildBiasLayer(xDim, mats, curOffset)
-      curOffset += xDim
+      layers += LayerUtil.buildBiasLayer(1, mats, curOffset)
+      curOffset += 1
     }
-    layers.toArray
+    (layers.toArray, curOffset)
   }
 
   private def buildDNNModule(): Sequential[Float] = {
@@ -163,7 +161,7 @@ class CrossEncoder(batchSize: Int,
     encoder
   }
 
-  private def buildLinearLayers(): Array[Linear[Float]] = {
+  private def buildLinearLayers(): (Array[Linear[Float]], Int) = {
     val layers = ArrayBuffer[Linear[Float]]()
     var curOffset = dnnLinearOffset
     var dim = xDim
@@ -172,7 +170,7 @@ class CrossEncoder(batchSize: Int,
       curOffset += dim * fcDim + fcDim
       dim = fcDim
     }
-    layers.toArray
+    (layers.toArray, curOffset)
   }
 
   private def buildOutputModule(): Sequential[Float] = {
@@ -184,13 +182,6 @@ class CrossEncoder(batchSize: Int,
   private def buildOutputLinearLayer(): Linear[Float] = {
     val dim = xDim + fcDims.last
     LayerUtil.buildLinear(dim, 1, mats, false, outputLinearOffset)
-  }
-
-  private def getDNNParameterSize: Int = {
-    val dims = Array(xDim) ++ fcDims
-    (1 until dims.length)
-      .map(i => dims(i - 1) * dims(i) + dims(i))
-      .sum
   }
 }
 

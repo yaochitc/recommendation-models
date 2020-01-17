@@ -15,11 +15,11 @@ class DCN(inputDim: Int, nFields: Int, embeddingDim: Int, crossDepth: Int, fcDim
   override def getMatsSize: Array[Int] = {
     val xDim = nFields * embeddingDim
     val crossLinearParamSize = (0 until crossDepth)
-      .map(i => Array(xDim, 1))
+      .map(_ => Array(xDim, 1))
       .reduce(_ ++ _)
 
     val crossBiasParamSize = (0 until crossDepth)
-      .map(i => Array(xDim, 1))
+      .map(_ => Array(1, 1))
       .reduce(_ ++ _)
 
     val fcDimsArr = Array(xDim) ++ fcDims
