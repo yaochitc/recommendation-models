@@ -14,7 +14,7 @@ object LRLocalExample {
     val params = ArgsUtil.parse(args)
     val input = params.getOrElse("input", "")
     val batchSize = params.getOrElse("batchSize", "100").toInt
-    val stepSize = params.getOrElse("stepSize", "0.01").toFloat
+    val stepSize = params.getOrElse("stepSize", "0.0025").toFloat
     val inputDim = params.getOrElse("inputDim", "-1").toInt
 
     val conf = new SparkConf()

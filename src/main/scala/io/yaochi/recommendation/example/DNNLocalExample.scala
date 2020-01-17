@@ -4,7 +4,6 @@ import com.tencent.angel.spark.context.PSContext
 import com.tencent.angel.spark.ml.core.ArgsUtil
 import com.tencent.angel.spark.ml.core.metric.AUC
 import io.yaochi.recommendation.model.ParRecModel
-import io.yaochi.recommendation.model.deepfm.DeepFM
 import io.yaochi.recommendation.model.dnn.DNN
 import io.yaochi.recommendation.optim.AsyncAdam
 import org.apache.spark.{SparkConf, SparkContext}
