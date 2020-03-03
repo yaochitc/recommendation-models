@@ -24,7 +24,7 @@ object SampleParser {
     val rows = new LongArrayList()
     val cols = new LongArrayList()
     val values = new FloatArrayList()
-    val targets = Array.ofDim[Float](lines.length)
+    val targets = new Array[Float](lines.length)
 
     var index = 0
     for (i <- lines.indices) {
@@ -55,7 +55,7 @@ object SampleParser {
     val cols = new LongArrayList()
     val fields = new LongArrayList()
     val values = new FloatArrayList()
-    val targets = Array.ofDim[Float](lines.length)
+    val targets = new Array[Float](lines.length)
 
     var index = 0
     for (i <- lines.indices) {
@@ -104,8 +104,8 @@ object SampleParser {
       return null
 
     val node = JLong.parseLong(parts(0))
-    val keys = Array.ofDim[Int](parts.length - 1)
-    val values = Array.ofDim[Float](parts.length - 1)
+    val keys = new Array[Int](parts.length - 1)
+    val values = new Array[Float](parts.length - 1)
     for (i <- 1 until parts.length) {
       val kv = parts(i).split(":")
       keys(i - 1) = Integer.parseInt(kv(0))
@@ -145,8 +145,8 @@ object SampleParser {
   def parseSparseIntFloat(line: String, dim: Int): IntFloatVector = {
     val parts = line.split(" ")
 
-    val keys = Array.ofDim[Int](parts.length)
-    val values = Array.ofDim[Float](parts.length)
+    val keys = new Array[Int](parts.length)
+    val values = new Array[Float](parts.length)
     for (i <- parts.indices) {
       val kv = parts(i).split(":")
       keys(i) = Integer.parseInt(kv(0))

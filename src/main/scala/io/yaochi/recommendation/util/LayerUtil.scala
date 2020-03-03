@@ -10,12 +10,12 @@ object LayerUtil {
                   withBias: Boolean,
                   offset: Int): Linear[Float] = {
     val weightSize = outputSize * inputSize
-    val weights = Array.ofDim[Float](weightSize)
+    val weights = new Array[Float](weightSize)
     Array.copy(mats, offset, weights, 0, weightSize)
     val weightTensor = Tensor.apply(weights, Array(outputSize, inputSize))
 
     if (withBias) {
-      val bias = Array.ofDim[Float](outputSize)
+      val bias = new Array[Float](outputSize)
       Array.copy(mats, offset + weightSize, bias, 0, outputSize)
       val biasTensor = Tensor.apply(bias, Array(outputSize))
 
