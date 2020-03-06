@@ -125,7 +125,7 @@ private[pnn] class InternalPNNModel(nFields: Int,
 
     GradUtil.weightsGrad(weights, weightGradTensor)
     GradUtil.biasGrad(bias, biasGradTensor)
-    GradUtil.embeddingGrad(embedding, Array(productGradTensor))
+    GradUtil.embeddingGrad(embedding, productGradTensor)
 
     loss
   }

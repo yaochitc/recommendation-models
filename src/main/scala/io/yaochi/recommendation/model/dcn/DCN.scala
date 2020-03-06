@@ -123,7 +123,7 @@ private[dcn] class InternalDCNModel(nFields: Int,
 
     GradUtil.weightsGrad(weights, weightGradTensor)
     GradUtil.biasGrad(bias, biasGradTensor)
-    GradUtil.embeddingGrad(embedding, Array(embeddingGradTensor))
+    GradUtil.embeddingGrad(embedding, embeddingGradTensor)
 
     loss
   }

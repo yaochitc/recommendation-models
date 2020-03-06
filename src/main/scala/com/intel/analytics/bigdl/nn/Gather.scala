@@ -80,6 +80,7 @@ class Gather[T: ClassTag](batchSize: Int, numPairs: Int, embeddingSize: Int)
   override def clearState(): this.type = {
     super.clearState()
     rowBuffer.set()
+    colBuffer.set()
     this
   }
 }

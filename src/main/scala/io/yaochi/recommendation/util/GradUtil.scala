@@ -32,4 +32,12 @@ object GradUtil {
 
     Array.copy(gradEmbeddingArray, gradEmbeddingOffset, embedding, 0, embedding.length)
   }
+
+  def embeddingGrad(embedding: Array[Float],
+                    gradTensor: Tensor[Float]): Unit = {
+    val gradEmbeddingArray = gradTensor.storage().array()
+    val gradEmbeddingOffset = gradTensor.storageOffset() - 1
+
+    Array.copy(gradEmbeddingArray, gradEmbeddingOffset, embedding, 0, embedding.length)
+  }
 }

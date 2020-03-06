@@ -99,7 +99,7 @@ private[dnn] class InternalDNNModel(nFields: Int,
     val biasGradTensor = gradTable[Tensor[Float]](2)
 
     GradUtil.biasGrad(bias, biasGradTensor)
-    GradUtil.embeddingGrad(embedding, Array(higherOrderGradTensor))
+    GradUtil.embeddingGrad(embedding, higherOrderGradTensor)
 
     loss
   }
